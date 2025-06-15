@@ -4,6 +4,10 @@ import matplotlib.pyplot as plt
 import datetime
 import gspread
 from google.oauth2.service_account import Credentials
+import json
+
+# Load credentials from Streamlit Secrets
+scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
 key_dict = json.loads(st.secrets["GOOGLE_SHEETS_KEY"])
 creds = Credentials.from_service_account_info(key_dict, scopes=scope)
 client = gspread.authorize(creds)
