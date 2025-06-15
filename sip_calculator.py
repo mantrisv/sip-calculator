@@ -1,16 +1,11 @@
-
 import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
 import datetime
 import gspread
-from oauth2client.service_account import ServiceAccountCredentials
-import json
-
-# Google Sheets scope and credential setup using Streamlit Secrets
-scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+from google.oauth2.service_account import Credentials
 key_dict = json.loads(st.secrets["GOOGLE_SHEETS_KEY"])
-creds = ServiceAccountCredentials.from_json_keyfile_dict(key_dict, scope)
+creds = Credentials.from_service_account_info(key_dict, scopes=scope)
 client = gspread.authorize(creds)
 
 # Logging function to write data to Google Sheet
