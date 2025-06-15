@@ -2,45 +2,59 @@ import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
 
-# Title
+st.set_page_config(page_title="SIP Calculator", layout="centered")
+
 st.title("📈 SIP Calculator")
 
-# Inputs
-monthly_investment = st.number_input("Monthly Investment (₹)", value=5000, step=500)
-annual_return = st.number_input("Expected Annual Return (%)", value=12.0, step=0.1)
-years = st.number_input("Investment Duration (Years)", value=10, step=1)
+tab1, tab2 = st.tabs(["Forward SIP", "Reverse SIP"])
 
-# Derived values
-months = int(years * 12)
-monthly_rate = annual_return / 12 / 100
+# ---------- FORWARD CALCULATION ----------
+with tab1:
+    st.header("🔹 Forward SIP Calculator")
+    monthly_investment = st.number_input("Monthly Investment (₹)", min_value=100, step=100)
+    annual_rate = st.number_input("Expected Annual Return (%)", min_value=1.0, value=12.0)
+    years = st.number_input("Investment Period (Years)", min_value=1, value=10)
 
-# SIP Calculation
-data = []
-total = 0
-cumulative_investment = 0
+    r = annual_rate / 12 / 100
+    n = int(years * 12)
 
-for month in range(1, months + 1):
-    interest = total * monthly_rate
-    total += monthly_investment + interest
-    cumulative_investment += monthly_investment
-    data.append([month, cumulative_investment, round(total, 2), round(interest, 2)])
+    fv = monthly_investment * (((1 + r) ** n - 1) / r) * (1 + r)
+    total_invested = monthly_investment * n
+    gain = fv - total_invested
 
-df = pd.DataFrame(data, columns=["Month", "Cumulative Investment", "Total Value", "Interest Earned"])
+    st.subheader(f"📌 Future Value: ₹{fv:,.0f}")
+    st.write(f"💰 Total Invested: ₹{total_invested:,.0f}")
+    st.write(f"📈 Estimated Gain: ₹{gain:,.0f}")
 
-# Output Table
-st.subheader("📋 SIP Schedule")
-st.dataframe(df.tail(10), use_container_width=True)
+    # Plotting
+    df = pd.DataFrame({
+        "Month": list(range(1, n + 1)),
+        "Invested Amount": [monthly_investment * i for i in range(1, n + 1)],
+        "Future Value": [monthly_investment * (((1 + r) ** i - 1) / r) * (1 + r) for i in range(1, n + 1)]
+    })
 
-# Chart
-st.subheader("📊 Investment Growth Chart")
-fig, ax = plt.subplots(figsize=(10, 5))
-ax.plot(df["Month"], df["Total Value"], label="Total Value", color="green")
-ax.plot(df["Month"], df["Cumulative Investment"], label="Cumulative Investment", linestyle="--", color="blue")
-ax.fill_between(df["Month"], df["Cumulative Investment"], df["Total Value"], color="lightgreen", alpha=0.3)
-ax.set_xlabel("Month")
-ax.set_ylabel("Value (₹)")
-ax.legend()
-st.pyplot(fig)
+    fig, ax = plt.subplots()
+    ax.plot(df["Month"], df["Invested Amount"], label="Invested", color="blue")
+    ax.plot(df["Month"], df["Future Value"], label="Value", color="green")
+    ax.set_title("SIP Growth Over Time")
+    ax.set_xlabel("Month")
+    ax.set_ylabel("Amount (₹)")
+    ax.legend()
+    st.pyplot(fig)
 
-# Final Summary
-st.success(f"💰 Final Corpus: ₹{df['Total Value'].iloc[-1]:,.2f}")
+# ---------- REVERSE CALCULATION ----------
+with tab2:
+    st.header("🔁 Reverse SIP Calculator")
+    goal_amount = st.number_input("Target Amount (₹)", min_value=10000, step=10000, value=500000)
+    reverse_annual_rate = st.number_input("Expected Annual Return (%)", min_value=1.0, value=12.0, key="reverse_rate")
+    reverse_years = st.number_input("Investment Period (Years)", min_value=1, value=10, key="reverse_years")
+
+    r_rev = reverse_annual_rate / 12 / 100
+    n_rev = int(reverse_years * 12)
+
+    # Reverse formula for SIP
+    if r_rev > 0:
+        required_sip = goal_amount * r_rev / (((1 + r_rev) ** n_rev - 1) * (1 + r_rev))
+        st.subheader(f"💸 Required Monthly SIP: ₹{required_sip:,.0f}")
+    else:
+        st.warning("Interest rate must be greater than 0")
