@@ -58,3 +58,68 @@ with tab2:
         st.subheader(f"💸 Required Monthly SIP: ₹{required_sip:,.0f}")
     else:
         st.warning("Interest rate must be greater than 0")
+
+
+
+# ------------------- Visitor Info Collection Form --------------------
+
+import datetime
+import gspread
+from oauth2client.service_account import ServiceAccountCredentials
+
+st.sidebar.markdown("### 📬 Stay Connected")
+with st.sidebar.form("user_info_form"):
+    st.markdown("Want a copy of your plan? Drop your details below:")
+    name = st.text_input("Your Name")
+    email = st.text_input("Email Address")
+    mobile = st.text_input("Mobile Number (optional)")
+
+    submitted = st.form_submit_button("Submit")
+
+if submitted:
+    if not email:
+        st.warning("Email is required.")
+    else:
+        st.success("Thanks! Details received.")
+        try:
+            log_user_data(name, email, mobile)
+        except Exception as e:
+            st.error("Could not write to Google Sheet.")
+            st.exception(e)
+
+
+    if submitted:
+        if not email:
+            st.warning("Email is required to proceed.")
+        else:
+            st.success("Thank you! We’ve received your details.")
+
+            def log_user_data():
+                scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+                creds = ServiceAccountCredentials.from_json_keyfile_name("client_secret.json", scope)
+                client = gspread.authorize(creds)
+                sheet = client.open("Visitor_Log").sheet1
+                sheet.append_row([
+                    datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    name, email, mobile
+                ])
+
+            try:
+                log_user_data()
+            except Exception as e:
+                st.error("⚠️ Couldn't log data. Check Google Sheet setup.")
+
+
+import datetime
+import gspread
+from oauth2client.service_account import ServiceAccountCredentials
+
+def log_user_data(name, email, mobile):
+    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+    creds = ServiceAccountCredentials.from_json_keyfile_name("client_secret.json", scope)
+    client = gspread.authorize(creds)
+    sheet = client.open("Visitor_Log").sheet1
+    sheet.append_row([
+        datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        name, email, mobile
+    ])
