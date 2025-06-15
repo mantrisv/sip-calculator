@@ -113,11 +113,15 @@ if submitted:
 import datetime
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
+import json
 
-def log_user_data(name, email, mobile):
-    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-    creds = ServiceAccountCredentials.from_json_keyfile_name("client_secret.json", scope)
-    client = gspread.authorize(creds)
+scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+
+# Load service account key from Streamlit secrets
+key_dict = json.loads(st.secrets["GOOGLE_SHEETS_KEY"])
+creds = ServiceAccountCredentials.from_json_keyfile_dict(key_dict, scope)
+
+client = gspread.authorize(creds)
     sheet = client.open("Visitor_Log").sheet1
     sheet.append_row([
         datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
