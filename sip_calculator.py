@@ -1,9 +1,32 @@
+
 import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
+import datetime
+import gspread
+from oauth2client.service_account import ServiceAccountCredentials
+import json
 
+# Google Sheets scope and credential setup using Streamlit Secrets
+scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+key_dict = json.loads(st.secrets["GOOGLE_SHEETS_KEY"])
+creds = ServiceAccountCredentials.from_json_keyfile_dict(key_dict, scope)
+client = gspread.authorize(creds)
+
+# Logging function to write data to Google Sheet
+def log_user_data(name, email, mobile):
+    try:
+        sheet = client.open("Visitor_Log").sheet1
+        sheet.append_row([
+            datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            name, email, mobile
+        ])
+    except Exception as e:
+        st.error("Could not log to Google Sheet.")
+        st.exception(e)
+
+# Streamlit App UI
 st.set_page_config(page_title="SIP Calculator", layout="centered")
-
 st.title("📈 SIP Calculator")
 
 tab1, tab2 = st.tabs(["Forward SIP", "Reverse SIP"])
@@ -52,78 +75,23 @@ with tab2:
     r_rev = reverse_annual_rate / 12 / 100
     n_rev = int(reverse_years * 12)
 
-    # Reverse formula for SIP
     if r_rev > 0:
         required_sip = goal_amount * r_rev / (((1 + r_rev) ** n_rev - 1) * (1 + r_rev))
         st.subheader(f"💸 Required Monthly SIP: ₹{required_sip:,.0f}")
     else:
         st.warning("Interest rate must be greater than 0")
 
-
-
-# ------------------- Visitor Info Collection Form --------------------
-
-import datetime
-import gspread
-from oauth2client.service_account import ServiceAccountCredentials
-
+# -------------- Visitor Info Form ----------------
 st.sidebar.markdown("### 📬 Stay Connected")
-with st.sidebar.form("user_info_form"):
-    st.markdown("Want a copy of your plan? Drop your details below:")
+with st.sidebar.form("visitor_form"):
     name = st.text_input("Your Name")
-    email = st.text_input("Email Address")
-    mobile = st.text_input("Mobile Number (optional)")
-
+    email = st.text_input("Your Email")
+    mobile = st.text_input("Your Mobile")
     submitted = st.form_submit_button("Submit")
-
-if submitted:
-    if not email:
-        st.warning("Email is required.")
-    else:
-        st.success("Thanks! Details received.")
-        try:
-            log_user_data(name, email, mobile)
-        except Exception as e:
-            st.error("Could not write to Google Sheet.")
-            st.exception(e)
-
 
     if submitted:
         if not email:
-            st.warning("Email is required to proceed.")
+            st.warning("Email is required.")
         else:
-            st.success("Thank you! We’ve received your details.")
-
-            def log_user_data():
-                scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-                creds = ServiceAccountCredentials.from_json_keyfile_name("client_secret.json", scope)
-                client = gspread.authorize(creds)
-                sheet = client.open("Visitor_Log").sheet1
-                sheet.append_row([
-                    datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                    name, email, mobile
-                ])
-
-            try:
-                log_user_data()
-            except Exception as e:
-                st.error("⚠️ Couldn't log data. Check Google Sheet setup.")
-
-
-import datetime
-import gspread
-from oauth2client.service_account import ServiceAccountCredentials
-import json
-
-scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-
-# Load service account key from Streamlit secrets
-key_dict = json.loads(st.secrets["GOOGLE_SHEETS_KEY"])
-creds = ServiceAccountCredentials.from_json_keyfile_dict(key_dict, scope)
-
-client = gspread.authorize(creds)
-    sheet = client.open("Visitor_Log").sheet1
-    sheet.append_row([
-        datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        name, email, mobile
-    ])
+            st.success("Thanks! Details received.")
+            log_user_data(name, email, mobile)
