@@ -82,7 +82,7 @@ with tab2:
 
 # -------------- Visitor Info Tab ----------------
 with tab3:
-    st.header("📬 Let's Stay in Touch!")
+    st.header("📬 Let's Connect!")
 
     with st.form("visitor_form_tab"):
         name = st.text_input("Your Name")
