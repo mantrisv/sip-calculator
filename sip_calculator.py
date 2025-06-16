@@ -27,7 +27,7 @@ def log_user_data(name, email, mobile):
 st.set_page_config(page_title="SIP Calculator", layout="centered")
 st.title("📈 SIP Calculator")
 
-tab1, tab2, spacer, tab3 = st.tabs(["Forward SIP", "Reverse SIP", "                     ", "💬 Let's Get Connected"])
+tab1, tab2, spacer, tab3 = st.tabs(["Forward SIP", "Reverse SIP", "              ", "💬 Let's Get Connected"])
 
 
 # ---------- FORWARD CALCULATION ----------
