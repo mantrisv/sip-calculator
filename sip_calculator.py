@@ -27,7 +27,8 @@ def log_user_data(name, email, mobile):
 st.set_page_config(page_title="SIP Calculator", layout="centered")
 st.title("📈 SIP Calculator")
 
-tab1, tab2 = st.tabs(["Forward SIP", "Reverse SIP"])
+tab1, tab2, spacer, tab3 = st.tabs(["Forward SIP", "Reverse SIP", "                          ", "💬 Let's Get Connected"])
+
 
 # ---------- FORWARD CALCULATION ----------
 with tab1:
@@ -79,17 +80,27 @@ with tab2:
     else:
         st.warning("Interest rate must be greater than 0")
 
-# -------------- Visitor Info Form ----------------
-st.sidebar.markdown("### 📬 Stay Connected")
-with st.sidebar.form("visitor_form"):
-    name = st.text_input("Your Name")
-    email = st.text_input("Your Email")
-    mobile = st.text_input("Your Mobile")
-    submitted = st.form_submit_button("Submit")
+# -------------- Visitor Info Tab ----------------
+with tab3:
+    st.header("📬 Let's Stay in Touch!")
 
-    if submitted:
-        if not email:
-            st.warning("Email is required.")
-        else:
-            st.success("Thanks! Details received.")
-            log_user_data(name, email, mobile)
+    with st.form("visitor_form_tab"):
+        name = st.text_input("Your Name")
+        email = st.text_input("Your Email")
+        mobile = st.text_input("Your Mobile")
+        submitted = st.form_submit_button("Submit")
+
+        if submitted:
+            if not email:
+                st.warning("Email is required.")
+            else:
+                st.success("Thanks! Details received.")
+                log_user_data(name, email, mobile)
+
+    st.markdown("""
+    🔹 Want to stay updated with new features?  
+    🔹 Have feedback or suggestions?  
+    Just fill in your details and we’ll reach out!
+    """)
+
+
