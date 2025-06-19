@@ -27,7 +27,7 @@ def log_user_data(name, email, mobile):
 st.set_page_config(page_title="SIP Calculator", layout="centered")
 st.title("📈 SIP Calculator")
 
-tab1, tab2, tab3, spacer, tab4 = st.tabs(["Forward SIP", "Reverse SIP", "Lump Sum", "  ", "🚀 Start SIPping Today"])
+tab1, tab2, tab3, tab5, spacer, tab4 = st.tabs(["Forward SIP", "Reverse SIP", "Lump Sum", "Time to ₹1 Cr", "  ", "🚀 Start SIPping Today"])
 
 
 # ---------- FORWARD CALCULATION ----------
@@ -107,6 +107,36 @@ with tab3:
     ax_lump.set_xlabel("Year")
     ax_lump.set_ylabel("Amount (₹)")
     st.pyplot(fig_lump)
+
+
+
+# ---------- TIME TO ₹1 CRORE CALCULATION ----------
+with tab5:
+    st.header("🏁 Time to ₹1 Crore")
+    sip_amount = st.number_input("Monthly SIP (₹)", min_value=100, step=100, value=10000)
+    annual_rate_crore = st.number_input("Expected Annual Return (%)", min_value=1.0, value=12.0, key="crore_rate")
+
+    r_crore = annual_rate_crore / 12 / 100
+    goal = 1_00_00_000  # 1 crore
+    max_months = 1000  # Cap at ~83 years
+
+    def calculate_months_to_goal(p, r, target):
+        months = 1
+        while months <= max_months:
+            fv = p * (((1 + r) ** months - 1) / r) * (1 + r)
+            if fv >= target:
+                return months
+            months += 1
+        return None
+
+    months_needed = calculate_months_to_goal(sip_amount, r_crore, goal)
+
+    if months_needed:
+        years_needed = months_needed // 12
+        extra_months = months_needed % 12
+        st.subheader(f"🗓️ You will reach ₹1 Crore in {years_needed} years and {extra_months} months.")
+    else:
+        st.warning("With this SIP and return rate, ₹1 Cr may take too long or not be reachable.")
 
 
 # -------------- Visitor Info Tab ----------------
