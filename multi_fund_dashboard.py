@@ -1,53 +1,85 @@
-
 import streamlit as st
 import pandas as pd
+import plotly.express as px
 
-st.set_page_config(page_title="Multi-MF Analyzer", layout="wide")
-st.title("📊 Mutual Fund Multi-File Analyzer")
+st.set_page_config(page_title="MyMFInsights Dashboard", layout="wide")
+st.title("📊 MyMFInsights: Mutual Fund Holdings Dashboard")
 
-uploaded_files = st.file_uploader("Upload Mutual Fund Holding Excel Files", type=["csv", "xlsx"], accept_multiple_files=True)
+st.markdown("Upload multiple mutual fund holdings Excel/CSV files. Files must contain columns like: `Invested In`, `Sector`, `Outflow`, `Month`, `Year`.")
+
+uploaded_files = st.file_uploader("📁 Upload Mutual Fund Files", type=["csv", "xlsx"], accept_multiple_files=True)
+
+@st.cache_data
+
+def load_file(file):
+    ext = file.name.split(".")[-1]
+    if ext == "csv":
+        df = pd.read_csv(file)
+    else:
+        df = pd.read_excel(file)
+    df = df.rename(columns=lambda x: x.strip())
+    return df
+
+fund_data = {}
 
 if uploaded_files:
-    funds_data = {}
+    for file in uploaded_files:
+        df = load_file(file)
+        fund_name = file.name.rsplit(".", 1)[0]  # file name without extension
+        if {'Invested In', 'Outflow'}.issubset(df.columns):
+            df['Fund'] = fund_name
+            fund_data[fund_name] = df
 
-    for uploaded_file in uploaded_files:
-        try:
-            df = pd.read_csv(uploaded_file) if uploaded_file.name.endswith(".csv") else pd.read_excel(uploaded_file)
-            if 'Invested In' not in df.columns or 'Month Change <br> in Shares %' not in df.columns:
-                st.warning(f"'{uploaded_file.name}' missing required columns.")
-                continue
-            df['Month Change <br> in Shares %'] = df['Month Change <br> in Shares %'].astype(str)
-            fund_name = uploaded_file.name.replace(".csv", "").replace(".xlsx", "")
-            funds_data[fund_name] = df
-        except Exception as e:
-            st.error(f"Error processing {uploaded_file.name}: {e}")
+if fund_data:
+    fund_selected = st.selectbox("Select Mutual Fund", list(fund_data.keys()))
+    view_selected = st.selectbox("Select View", [
+        "New Additions",
+        "Top Gainers (Increased Holdings)",
+        "Top Exits / Reductions",
+        "Top Holdings",
+        "Sectoral Allocation"
+    ])
 
-    if funds_data:
-        selected_fund = st.selectbox("Select a Mutual Fund to Analyze", list(funds_data.keys()))
-        df = funds_data[selected_fund]
+    df = fund_data[fund_selected].copy()
 
-        st.header(f"📈 Analysis for: {selected_fund}")
+    if view_selected == "New Additions":
+        if 'Previous Month' in df.columns:
+            new_additions = df[df['Previous Month'].isna()]  # or some logic to detect new
+            st.subheader("🆕 New Additions")
+            st.dataframe(new_additions, use_container_width=True)
+        else:
+            st.info("Need previous month data to detect additions.")
 
-        new_stocks = df[df['Month Change <br> in Shares %'].str.contains('new', case=False, na=False)]
-        gainers = df[df['Month Change <br> in Shares %'].str.contains('^[+]?[0-9]', na=False, regex=True)]
-        reducers = df[df['Month Change <br> in Shares %'].str.contains('^-', na=False)]
+    elif view_selected == "Top Gainers (Increased Holdings)":
+        if 'Change %' in df.columns:
+            gainers = df.sort_values(by='Change %', ascending=False).head(10)
+            st.subheader("📈 Top Gainers")
+            st.dataframe(gainers, use_container_width=True)
+        else:
+            st.info("Column 'Change %' not found in uploaded data.")
 
-        top_holdings = df[['Invested In', '% of Total Holding']].dropna().sort_values(by='% of Total Holding', ascending=False).head(5) if '% of Total Holding' in df.columns else pd.DataFrame()
-        sector_summary = df[['Sector', '% of Total Holding']].dropna().groupby('Sector')['% of Total Holding'].sum().reset_index().sort_values(by='% of Total Holding', ascending=False) if 'Sector' in df.columns and '% of Total Holding' in df.columns else pd.DataFrame()
+    elif view_selected == "Top Exits / Reductions":
+        if 'Change %' in df.columns:
+            losers = df.sort_values(by='Change %').head(10)
+            st.subheader("📉 Top Reductions/Exits")
+            st.dataframe(losers, use_container_width=True)
+        else:
+            st.info("Column 'Change %' not found in uploaded data.")
 
-        with st.expander("🆕 New Stocks Added", expanded=True):
-            st.dataframe(new_stocks[["Invested In", "Sector", "Month Change <br> in Shares %"]])
+    elif view_selected == "Top Holdings":
+        if 'Outflow' in df.columns:
+            top_holdings = df.sort_values(by='Outflow', ascending=False).head(10)
+            st.subheader("🏆 Top Holdings")
+            st.dataframe(top_holdings, use_container_width=True)
+        else:
+            st.info("Column 'Outflow' not found in uploaded data.")
 
-        with st.expander("📈 Top Gainers"):
-            st.dataframe(gainers.sort_values(by='Month Change <br> in Shares %', ascending=False)[["Invested In", "Month Change <br> in Shares %"]].head(5))
-
-        with st.expander("📉 Top Reducers / Exits"):
-            st.dataframe(reducers.sort_values(by='Month Change <br> in Shares %')[["Invested In", "Month Change <br> in Shares %"]].head(5))
-
-        if not top_holdings.empty:
-            with st.expander("🏆 Top Holdings (by Weight)"):
-                st.dataframe(top_holdings)
-
-        if not sector_summary.empty:
-            with st.expander("🏭 Sectoral Allocation"):
-                st.dataframe(sector_summary)
+    elif view_selected == "Sectoral Allocation":
+        if 'Sector' in df.columns and 'Outflow' in df.columns:
+            sector_data = df.groupby('Sector')['Outflow'].sum().reset_index()
+            fig = px.pie(sector_data, names='Sector', values='Outflow', title='Sectoral Allocation')
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.info("Columns 'Sector' and 'Outflow' required for sectoral chart.")
+else:
+    st.info("Upload at least one mutual fund holdings file to begin.")
