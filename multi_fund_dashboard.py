@@ -1,6 +1,5 @@
 import streamlit as st
 import pandas as pd
-import plotly.express as px
 
 st.set_page_config(page_title="MyMFInsights Dashboard", layout="wide")
 st.title("📊 MyMFInsights: Mutual Fund Holdings Dashboard")
@@ -36,8 +35,7 @@ if fund_data:
         "New Additions",
         "Top Gainers (Increased Holdings)",
         "Top Exits / Reductions",
-        "Top Holdings",
-        "Sectoral Allocation"
+        "Top Holdings"
     ])
 
     df = fund_data[fund_selected].copy()
@@ -73,13 +71,5 @@ if fund_data:
             st.dataframe(top_holdings, use_container_width=True)
         else:
             st.info("Column 'Outflow' not found in uploaded data.")
-
-    elif view_selected == "Sectoral Allocation":
-        if 'Sector' in df.columns and 'Outflow' in df.columns:
-            sector_data = df.groupby('Sector')['Outflow'].sum().reset_index()
-            fig = px.pie(sector_data, names='Sector', values='Outflow', title='Sectoral Allocation')
-            st.plotly_chart(fig, use_container_width=True)
-        else:
-            st.info("Columns 'Sector' and 'Outflow' required for sectoral chart.")
 else:
     st.info("Upload at least one mutual fund holdings file to begin.")
