@@ -39,7 +39,7 @@ def parse_pasted_data(text):
 def main():
     st.title("📋 Monthly Expense Categorizer")
     st.write("Paste your raw expense data below. Each line should be like:")
-    st.code("17500  premium school")
+    st.code("amount in figures  description")
 
     pasted_text = st.text_area("Paste Here:", height=300)
 
