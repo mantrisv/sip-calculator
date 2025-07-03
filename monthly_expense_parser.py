@@ -8,8 +8,10 @@ CATEGORY_RULES = {
     "Education": ["school"],
     "Housing": ["home", "society", "kitchen sink", "trolley"],
     "Investments": ["ppf", "nps", "rba", "axis"],
+    "Loans": ["axis"],
     "Utilities": ["phone", "credit card", "PUC", "rights issue"],
     "Food": ["swagath", "chefs", "theory", "mukhis", "books", "vithaldas"],
+    "Books": ["books"],
     "Miscellaneous": ["misc", "adjustment", "frameley", "mini tatal", "syed", "jio star"],
     "Savings": ["savings"],
     "SIP/Lumpsum": ["sip"]
