@@ -7,13 +7,14 @@ import matplotlib.pyplot as plt
 CATEGORY_RULES = {
     "Education": ["school"],
     "Housing": ["home", "society", "kitchen sink", "trolley"],
-    "Investments": ["ppf", "nps", "rba", "axis"],
-    "Loans": ["axis"],
+    "Investments": ["ppf", "nps", "rba"],
+    "Loans": ["axis", "emi"],
     "Utilities": ["phone", "credit card", "PUC", "rights issue"],
     "Food": ["swagath", "chefs", "theory", "mukhis", "books", "vithaldas"],
     "Books": ["books"],
     "Miscellaneous": ["misc", "adjustment", "frameley", "mini tatal", "syed", "jio star"],
     "Savings": ["savings"],
+    "Cash": ["cash"],
     "SIP/Lumpsum": ["sip"]
 }
 
