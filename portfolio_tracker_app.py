@@ -1,4 +1,3 @@
-
 import streamlit as st
 import pandas as pd
 
@@ -24,9 +23,18 @@ if uploaded_file:
 
     consolidated['Status'] = consolidated['Gain/Loss'].apply(lambda x: 'Positive' if x > 0 else 'Negative' if x < 0 else 'Neutral')
 
-    # Sidebar filter
+    # Sidebar filters
     status_filter = st.sidebar.selectbox("Filter by Status", ["All", "Positive", "Negative", "Neutral"])
     filtered_df = consolidated if status_filter == "All" else consolidated[consolidated['Status'] == status_filter]
+
+    filter_mode = st.sidebar.radio("Scrip Filter Mode", ["Include Only", "Exclude"])
+    selected_scrips = st.sidebar.multiselect("Select Scrips", options=sorted(consolidated['ScripName'].unique().tolist()))
+
+    if selected_scrips:
+        if filter_mode == "Include Only":
+            filtered_df = filtered_df[filtered_df['ScripName'].isin(selected_scrips)]
+        else:
+            filtered_df = filtered_df[~filtered_df['ScripName'].isin(selected_scrips)]
 
     # Portfolio metrics
     total_invested = filtered_df['Buying Quanta'].sum()
@@ -40,7 +48,14 @@ if uploaded_file:
 
     # Main table
     st.subheader("🧾 Consolidated Holdings")
-    st.dataframe(filtered_df)
+    st.dataframe(pd.concat([filtered_df, pd.DataFrame([{
+        'ScripName': 'TOTAL',
+        'Quantity': filtered_df['Quantity'].sum(),
+        'Buying Quanta': total_invested,
+        'Selling Quanta': total_current_value,
+        'Gain/Loss': filtered_df['Gain/Loss'].sum(),
+        '% wtge': total_weight
+    }])], ignore_index=True))
 
     # Tabs section
     tab1, tab2, tab3, tab4 = st.tabs([
@@ -52,11 +67,19 @@ if uploaded_file:
 
     with tab1:
         top_5 = consolidated.sort_values(by='% wtge', ascending=False).head(5)
-        st.dataframe(top_5[['ScripName', '% wtge', 'Gain/Loss']])
+        st.dataframe(pd.concat([top_5[['ScripName', '% wtge', 'Gain/Loss']], pd.DataFrame([{
+            'ScripName': 'TOTAL',
+            '% wtge': top_5['% wtge'].sum(),
+            'Gain/Loss': top_5['Gain/Loss'].sum()
+        }])], ignore_index=True))
 
     with tab2:
         top_10 = consolidated.sort_values(by='% wtge', ascending=False).head(10)
-        st.dataframe(top_10[['ScripName', '% wtge', 'Gain/Loss']])
+        st.dataframe(pd.concat([top_10[['ScripName', '% wtge', 'Gain/Loss']], pd.DataFrame([{
+            'ScripName': 'TOTAL',
+            '% wtge': top_10['% wtge'].sum(),
+            'Gain/Loss': top_10['Gain/Loss'].sum()
+        }])], ignore_index=True))
 
     with tab3:
         insights = consolidated[
