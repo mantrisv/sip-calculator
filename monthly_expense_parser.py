@@ -10,7 +10,7 @@ CATEGORY_RULES = {
     "Investments": ["ppf", "nps", "rba"],
     "Loans": ["axis", "emi"],
     "Utilities": ["phone", "credit card", "PUC", "rights issue"],
-    "Food": ["swagath", "chefs", "theory", "mukhis", "books", "vithaldas"],
+    "Food": ["swagath", "chefs", "theory", "mukhis", "vithaldas"],
     "Books": ["books"],
     "Miscellaneous": ["misc", "adjustment", "frameley", "mini tatal", "syed", "jio star"],
     "Savings": ["savings"],
