@@ -67,19 +67,25 @@ if uploaded_file:
 
     with tab1:
         top_5 = consolidated.sort_values(by='% wtge', ascending=False).head(5)
-        st.dataframe(pd.concat([top_5[['ScripName', '% wtge', 'Gain/Loss']], pd.DataFrame([{
+        top_5_total = pd.DataFrame([{
             'ScripName': 'TOTAL',
             '% wtge': top_5['% wtge'].sum(),
-            'Gain/Loss': top_5['Gain/Loss'].sum()
-        }])], ignore_index=True))
+            'Gain/Loss': top_5['Gain/Loss'].sum(),
+            'Buying Quanta': top_5['Buying Quanta'].sum(),
+            'Selling Quanta': top_5['Selling Quanta'].sum()
+        }])
+        st.dataframe(pd.concat([top_5[['ScripName', '% wtge', 'Gain/Loss', 'Buying Quanta', 'Selling Quanta']], top_5_total], ignore_index=True))
 
     with tab2:
         top_10 = consolidated.sort_values(by='% wtge', ascending=False).head(10)
-        st.dataframe(pd.concat([top_10[['ScripName', '% wtge', 'Gain/Loss']], pd.DataFrame([{
+        top_10_total = pd.DataFrame([{
             'ScripName': 'TOTAL',
             '% wtge': top_10['% wtge'].sum(),
-            'Gain/Loss': top_10['Gain/Loss'].sum()
-        }])], ignore_index=True))
+            'Gain/Loss': top_10['Gain/Loss'].sum(),
+            'Buying Quanta': top_10['Buying Quanta'].sum(),
+            'Selling Quanta': top_10['Selling Quanta'].sum()
+        }])
+        st.dataframe(pd.concat([top_10[['ScripName', '% wtge', 'Gain/Loss', 'Buying Quanta', 'Selling Quanta']], top_10_total], ignore_index=True))
 
     with tab3:
         insights = consolidated[
