@@ -3,12 +3,6 @@ import pandas as pd
 from datetime import datetime
 
 # --- Helper functions ---
-def get_top_traded(df):
-    if 'SECURITY' in df.columns and 'NET_TRDQTY' in df.columns:
-        df = df.sort_values(by='NET_TRDQTY', ascending=False)
-        return df[['SECURITY', 'NET_TRDQTY']].head(5)
-    return None
-
 def get_gainers_losers(gl_df, top_500=None):
     gl_df = gl_df.dropna(subset=['SECURITY', 'PERCENT_CG', 'GAIN_LOSS'])
     gl_df['GAIN_LOSS'] = gl_df['GAIN_LOSS'].astype(str).str.strip()
@@ -25,6 +19,35 @@ def get_52w_highs_lows(hl_df):
     hl_df = hl_df[hl_df['NEW_STATUS'].isin(['H', 'L'])]
     return hl_df[['SECURITY', 'NEW_STATUS']].head(5)
 
+def classify_high_low_delivery(hl_df_with_symbols, delivery_df):
+    merged_df = hl_df_with_symbols.merge(delivery_df, on='SYMBOL', how='left')
+    merged_df = merged_df.dropna(subset=['DELIV_PERC'])
+
+    def interpret(row):
+        if row['NEW_STATUS'] == 'H':
+            if row['DELIV_PERC'] < 30:
+                return "52W High on Low Delivery – Possible churn"
+            else:
+                return "52W High on High Delivery – Strong hands entry"
+        elif row['NEW_STATUS'] == 'L':
+            if row['DELIV_PERC'] < 30:
+                return "52W Low on Low Delivery – Selling subsiding"
+            else:
+                return "52W Low on High Delivery – Panic or distribution"
+        return None
+
+    merged_df['INTERPRETATION'] = merged_df.apply(interpret, axis=1)
+    return merged_df[['SECURITY', 'NEW_STATUS', 'DELIV_PERC', 'INTERPRETATION']]
+
+def add_symbols_to_hl(hl_df, mcap_df):
+    mcap_df = mcap_df.copy()
+    mcap_df.columns = mcap_df.columns.str.strip()
+    col_map = {col: col.replace('\xa0', ' ').replace('\u200b', '').strip() for col in mcap_df.columns}
+    mcap_df.rename(columns=col_map, inplace=True)
+    symbol_map = dict(zip(mcap_df['Security Name'].str.strip(), mcap_df['Symbol'].str.strip()))
+    hl_df['SYMBOL'] = hl_df['SECURITY'].str.strip().map(symbol_map)
+    return hl_df
+
 # --- Streamlit UI ---
 st.title("📈 Morning Market Brief - Dealing Desk")
 
@@ -34,7 +57,6 @@ support = st.text_input("Support Levels", "24300 / 24200")
 resistance = st.text_input("Resistance Levels", "24500 / 24630")
 
 st.subheader("📤 Upload Bhavcopy CSVs")
-pr_file = st.file_uploader("Upload PR File (e.g., PRddmmyy.csv)", type="csv")
 gl_file = st.file_uploader("Upload GL File (e.g., GLddmmyy.csv)", type="csv")
 hl_file = st.file_uploader("Upload HL File (e.g., HLddmmyy.csv)", type="csv")
 delivery_file = st.file_uploader("Upload Delivery File (e.g., MTO_ddmmyy.DAT)", type=["DAT", "dat"])
@@ -50,36 +72,31 @@ brief_text = f"""📰 Morning Brief – {today.strftime('%d %b %Y')}
 - Resistance: {resistance}
 """
 
-# Parse MCAP file
+commentary = ""
 top_500 = None
+mcap_df = pd.DataFrame()
+
+# --- Parse MCAP file ---
 if mcap_file:
     try:
         mcap_df = pd.read_csv(mcap_file)
-        mcap_df = mcap_df[['Symbol', 'Market Cap(Rs.)              ']].dropna()
-        mcap_df['Market Cap(Rs.)              '] = pd.to_numeric(mcap_df['Market Cap(Rs.)              '], errors='coerce')
-        mcap_df = mcap_df.sort_values(by='Market Cap(Rs.)              ', ascending=False)
+        mcap_df.columns = mcap_df.columns.str.strip()
+        col_map = {col: col.replace('\xa0', ' ').replace('\u200b', '').strip() for col in mcap_df.columns}
+        mcap_df.rename(columns=col_map, inplace=True)
+        mcap_df = mcap_df[['Symbol', 'Security Name', 'Market Cap(Rs.)']].dropna()
+        mcap_df['Market Cap(Rs.)'] = pd.to_numeric(mcap_df['Market Cap(Rs.)'], errors='coerce')
+        mcap_df = mcap_df.sort_values(by='Market Cap(Rs.)', ascending=False)
         top_500 = set(mcap_df.head(500)['Symbol'].str.strip())
     except Exception as e:
         st.error(f"Error reading MCAP file: {e}")
 
-# Parse PR file
-if pr_file:
-    try:
-        pr_df = pd.read_csv(pr_file, on_bad_lines='skip', encoding='utf-8', engine='python')
-        top_traded_df = get_top_traded(pr_df)
-        if top_traded_df is not None:
-            brief_text += "\n📌 Top Traded Stocks:\n"
-            for _, row in top_traded_df.iterrows():
-                brief_text += f"- {row['SECURITY']} – {row['NET_TRDQTY']} qty\n"
-    except Exception as e:
-        st.error(f"Error reading PR file: {e}")
-
-# Parse GL file
+# --- Parse GL file ---
+gainers = pd.DataFrame()
+losers = pd.DataFrame()
 if gl_file:
     try:
         gl_df = pd.read_csv(gl_file)
         gainers, losers = get_gainers_losers(gl_df, top_500)
-        cmp_column = 'CLOSE_PRIC' if 'CLOSE_PRIC' in gl_df.columns else None
         if not gainers.empty:
             brief_text += "\n📈 Gainers:\n"
             for _, row in gainers.iterrows():
@@ -91,32 +108,37 @@ if gl_file:
     except Exception as e:
         st.error(f"Error reading GL file: {e}")
 
-# Parse HL file
+# --- Parse HL file ---
+hl_df = pd.DataFrame()
 if hl_file:
     try:
         hl_df = pd.read_csv(hl_file)
-        highs_lows_df = get_52w_highs_lows(hl_df)
-        if not highs_lows_df.empty:
+        hl_df = get_52w_highs_lows(hl_df)
+        if not hl_df.empty:
             brief_text += "\n🚀 52-Week Highs / Lows:\n"
-            for _, row in highs_lows_df.iterrows():
+            for _, row in hl_df.iterrows():
                 status = "High" if row['NEW_STATUS'] == 'H' else "Low"
                 brief_text += f"- {row['SECURITY']} – {status}\n"
     except Exception as e:
         st.error(f"Error reading HL file: {e}")
 
-# Parse Delivery file (.DAT)
+# --- Parse Delivery file ---
+delivery_df = pd.DataFrame()
+top_delivery = pd.DataFrame()
 if delivery_file:
     try:
         lines = delivery_file.getvalue().decode('utf-8').splitlines()
-        data_lines = lines[4:]  # Skip headers
+        data_lines = lines[4:]
         records = []
         for line in data_lines:
             parts = line.strip().split(',')
             if len(parts) >= 7:
+                segment = parts[3].strip()
                 symbol = parts[2].strip()
                 try:
                     deliv_perc = float(parts[6])
-                    records.append((symbol, deliv_perc))
+                    if segment == 'EQ':
+                        records.append((symbol, deliv_perc))
                 except:
                     continue
         delivery_df = pd.DataFrame(records, columns=['SYMBOL', 'DELIV_PERC'])
@@ -130,8 +152,33 @@ if delivery_file:
     except Exception as e:
         st.error(f"Error reading Delivery file: {e}")
 
-# Output Brief
+# --- Combine HL + SYMBOL + Delivery
+if not hl_df.empty and not delivery_df.empty and not mcap_df.empty:
+    try:
+        hl_df = add_symbols_to_hl(hl_df, mcap_df)
+        hl_analysis = classify_high_low_delivery(hl_df, delivery_df)
+        if not hl_analysis.empty:
+            brief_text += "\n📊 Delivery Insight on 52W Highs/Lows:\n"
+            for _, row in hl_analysis.iterrows():
+                brief_text += f"- {row['SECURITY']}: {row['INTERPRETATION']} ({row['DELIV_PERC']}%)\n"
+    except Exception as e:
+        st.warning(f"Could not cross-link HL with delivery: {e}")
+
+# --- AI Commentary ---
+commentary += "🧠 AI Commentary:\n"
+if not top_delivery.empty and top_delivery['DELIV_PERC'].mean() > 80:
+    commentary += "• Strong delivery-based buying seen across select names — possible accumulation by smart money.\n"
+
+if not gainers.empty and 'FIN' in ''.join(gainers['SECURITY'].values):
+    commentary += "• Financial stocks are buzzing on the upside — signs of renewed sectoral interest.\n"
+
+if not losers.empty and losers['PERCENT_CG'].mean() < -3:
+    commentary += "• Sharp corrections seen in laggards — profit booking likely after recent run-up.\n"
+
+# --- Output ---
 if st.button("📋 Generate Morning Brief"):
     st.text_area("📋 Copy this brief", brief_text, height=400)
-    st.download_button("💾 Download as .txt", brief_text, file_name="morning_brief.txt")
+    if commentary.strip():
+        st.text_area("🧠 Market View", commentary, height=150)
+    st.download_button("💾 Download as .txt", brief_text + "\n\n" + commentary, file_name="morning_brief.txt")
     st.success("Brief ready.")
