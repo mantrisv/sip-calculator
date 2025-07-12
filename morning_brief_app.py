@@ -56,11 +56,29 @@ outlook = st.text_input("Nifty Opening Outlook", "Nifty likely to open flat trac
 support = st.text_input("Support Levels", "24300 / 24200")
 resistance = st.text_input("Resistance Levels", "24500 / 24630")
 
-st.subheader("📤 Upload Bhavcopy CSVs")
-gl_file = st.file_uploader("Upload GL File (e.g., GLddmmyy.csv)", type="csv")
-hl_file = st.file_uploader("Upload HL File (e.g., HLddmmyy.csv)", type="csv")
-delivery_file = st.file_uploader("Upload Delivery File (e.g., MTO_ddmmyy.DAT)", type=["DAT", "dat"])
-mcap_file = st.file_uploader("Upload MCAP File (e.g., MCAPddmmyy.csv)", type="csv")
+st.subheader("📤 Upload All 4 Files (GL, HL, MCAP, Delivery)")
+
+uploaded_files = st.file_uploader(
+    "📥 Drag and drop or browse files",
+    type=["csv", "dat"],
+    accept_multiple_files=True
+)
+
+# Initialize placeholders
+gl_file = hl_file = mcap_file = delivery_file = None
+
+# Smart auto-identify based on filename
+for file in uploaded_files or []:
+    name = file.name.lower()
+    if "gl" in name and name.endswith(".csv"):
+        gl_file = file
+    elif "hl" in name and name.endswith(".csv"):
+        hl_file = file
+    elif "mcap" in name and name.endswith(".csv"):
+        mcap_file = file
+    elif name.endswith(".dat"):
+        delivery_file = file
+
 
 today = datetime.now()
 brief_text = f"""📰 Morning Brief – {today.strftime('%d %b %Y')}
@@ -166,14 +184,18 @@ if not hl_df.empty and not delivery_df.empty and not mcap_df.empty:
 
 # --- AI Commentary ---
 commentary += "🧠 AI Commentary:\n"
-if not top_delivery.empty and top_delivery['DELIV_PERC'].mean() > 80:
-    commentary += "• Strong delivery-based buying seen across select names — possible accumulation by smart money.\n"
 
-if not gainers.empty and 'FIN' in ''.join(gainers['SECURITY'].values):
-    commentary += "• Financial stocks are buzzing on the upside — signs of renewed sectoral interest.\n"
+# Hybrid delivery insight
+if not delivery_df.empty:
+    high_deliv_top_100 = delivery_df.sort_values(by='DELIV_PERC', ascending=False).head(100)
+    avg_top_100 = high_deliv_top_100['DELIV_PERC'].mean()
+    median_all = delivery_df['DELIV_PERC'].median()
 
-if not losers.empty and losers['PERCENT_CG'].mean() < -3:
-    commentary += "• Sharp corrections seen in laggards — profit booking likely after recent run-up.\n"
+    if avg_top_100 > 60:
+        commentary += f"• Strong delivery interest in top 100 stocks (avg {avg_top_100:.1f}%) – likely smart money activity.\n"
+    if median_all > 45:
+        commentary += f"• Overall delivery trend across top 500 stocks remains healthy (median {median_all:.1f}%).\n"
+
 
 # --- Output ---
 if st.button("📋 Generate Morning Brief"):
