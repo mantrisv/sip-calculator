@@ -1,3 +1,4 @@
+
 import streamlit as st
 import pandas as pd
 
@@ -30,8 +31,29 @@ if uploaded_file:
             return 'Unknown'
         return 'Short Term' if days < 365 else 'Long Term'
 
+    def classify_underperformance(days, return_pct):
+        if pd.isna(days) or pd.isna(return_pct):
+            return 'Unknown'
+        if days <= 90:
+            return 'Too Early'
+        if days > 180:
+            if return_pct < 0:
+                return 'Dud'
+            elif return_pct < 9:
+                return 'Sluggish'
+        if days > 90:
+            if return_pct < 0:
+                return 'Dragger'
+            elif return_pct < 9:
+                return 'Not Moving'
+        return 'Healthy'
+
+    def tag_underperformance(row):
+        return classify_underperformance(row['holding period'], row['%tage'])
+
     df['HoldingCategory'] = df['holding period'].apply(categorize_holding)
     df['HoldingPeriodStatus'] = df['holding period'].apply(holding_status)
+    df['UnderperformanceTag'] = df.apply(tag_underperformance, axis=1)
 
     # Consolidate holdings
     consolidated = df.groupby('ScripName').agg({
@@ -40,7 +62,8 @@ if uploaded_file:
         'Selling Quanta': 'sum',
         'Gain/Loss': 'sum',
         '% wtge': 'sum',
-        'HoldingPeriodStatus': 'first'
+        'HoldingPeriodStatus': 'first',
+        'UnderperformanceTag': lambda x: x.mode().iloc[0] if not x.mode().empty else 'Unknown'
     }).reset_index()
 
     consolidated['Status'] = consolidated['Gain/Loss'].apply(lambda x: 'Positive' if x > 0 else 'Negative' if x < 0 else 'Neutral')
@@ -89,11 +112,12 @@ if uploaded_file:
     }])], ignore_index=True))
 
     # Tabs section
-    tab1, tab2, tab3, tab4 = st.tabs([
+    tab1, tab2, tab3, tab4, tab5 = st.tabs([
         "⭐ Top 5 Holdings",
         "🔟 Top 10 Holdings",
         "📌 Insights & Alerts",
-        "🧿 Sub-1% Holdings"
+        "🧿 Sub-1% Holdings",
+        "🐢 Underperformers"
     ])
 
     with tab1:
@@ -136,3 +160,11 @@ if uploaded_file:
         total_low_weight = low_weight['% wtge'].sum()
         st.markdown(f"🧮 **Total Weight of Sub-1% Holdings:** {total_low_weight:.2f}%")
         st.dataframe(low_weight[['ScripName', '% wtge', 'Gain/Loss', 'HoldingPeriodStatus']])
+
+    with tab5:
+        underperf = consolidated[consolidated['UnderperformanceTag'].isin(['Dud', 'Sluggish', 'Dragger', 'Not Moving'])]
+        if underperf.empty:
+            st.success("🚀 No underperformers detected! Good going.")
+        else:
+            st.markdown("### 🐢 Stocks Tagged as Underperformers")
+            st.dataframe(underperf[['ScripName', '% wtge', 'Gain/Loss', 'UnderperformanceTag', 'HoldingPeriodStatus']].sort_values(by='% wtge', ascending=False))
