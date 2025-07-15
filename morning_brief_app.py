@@ -1,3 +1,4 @@
+
 import streamlit as st
 import pandas as pd
 from datetime import datetime
@@ -48,6 +49,99 @@ def add_symbols_to_hl(hl_df, mcap_df):
     hl_df['SYMBOL'] = hl_df['SECURITY'].str.strip().map(symbol_map)
     return hl_df
 
+@st.cache_data(show_spinner=False)
+def generate_brief(gl_file, hl_file, mcap_file, delivery_file, outlook, support, resistance):
+    brief_text = ""
+    commentary = ""
+    today = datetime.now()
+
+    brief_text += f"""📰 Morning Brief – {today.strftime('%d %b %Y')}
+
+🔹 Nifty View: {outlook}
+
+📈 Nifty Levels:
+- Support: {support}
+- Resistance: {resistance}
+"""
+
+    # --- Parse MCAP file ---
+    top_500 = None
+    mcap_df = pd.read_csv(mcap_file)
+    mcap_df.columns = mcap_df.columns.str.strip()
+    col_map = {col: col.replace('\xa0', ' ').replace('\u200b', '').strip() for col in mcap_df.columns}
+    mcap_df.rename(columns=col_map, inplace=True)
+    mcap_df = mcap_df[['Symbol', 'Security Name', 'Market Cap(Rs.)']].dropna()
+    mcap_df['Market Cap(Rs.)'] = pd.to_numeric(mcap_df['Market Cap(Rs.)'], errors='coerce')
+    mcap_df = mcap_df.sort_values(by='Market Cap(Rs.)', ascending=False)
+    top_500 = set(mcap_df.head(500)['Symbol'].str.strip())
+
+    # --- Gainers & Losers ---
+    gainers = losers = pd.DataFrame()
+    gl_df = pd.read_csv(gl_file)
+    gainers, losers = get_gainers_losers(gl_df, top_500)
+    if not gainers.empty:
+        brief_text += "\n📈 Gainers:\n"
+        for _, row in gainers.iterrows():
+            brief_text += f"- {row['SECURITY']} – up {round(row['PERCENT_CG'], 1)}%\n"
+    if not losers.empty:
+        brief_text += "\n📉 Losers:\n"
+        for _, row in losers.iterrows():
+            brief_text += f"- {row['SECURITY']} – down {abs(round(row['PERCENT_CG'], 1))}%\n"
+
+    # --- 52-Week Highs/Lows ---
+    hl_df = pd.read_csv(hl_file)
+    hl_df = get_52w_highs_lows(hl_df)
+    if not hl_df.empty:
+        brief_text += "\n🚀 52-Week Highs / Lows:\n"
+        for _, row in hl_df.iterrows():
+            status = "High" if row['NEW_STATUS'] == 'H' else "Low"
+            brief_text += f"- {row['SECURITY']} – {status}\n"
+
+    # --- Delivery file ---
+    delivery_df = pd.DataFrame()
+    lines = delivery_file.getvalue().decode('utf-8').splitlines()[4:]
+    records = []
+    for line in lines:
+        parts = line.strip().split(',')
+        if len(parts) >= 7:
+            segment = parts[3].strip()
+            symbol = parts[2].strip()
+            try:
+                deliv_perc = float(parts[6])
+                if segment == 'EQ':
+                    records.append((symbol, deliv_perc))
+            except:
+                continue
+    delivery_df = pd.DataFrame(records, columns=['SYMBOL', 'DELIV_PERC'])
+    delivery_df = delivery_df[delivery_df['SYMBOL'].isin(top_500)]
+    top_delivery = delivery_df.sort_values(by='DELIV_PERC', ascending=False).head(3)
+    if not top_delivery.empty:
+        brief_text += "\n📦 High Delivery % Stocks:\n"
+        for _, row in top_delivery.iterrows():
+            brief_text += f"- {row['SYMBOL']} – {row['DELIV_PERC']}%\n"
+
+    # --- HL + Delivery Interpretation
+    if not hl_df.empty and not delivery_df.empty and not mcap_df.empty:
+        hl_df = add_symbols_to_hl(hl_df, mcap_df)
+        hl_analysis = classify_high_low_delivery(hl_df, delivery_df)
+        if not hl_analysis.empty:
+            brief_text += "\n📊 Delivery Insight on 52W Highs/Lows:\n"
+            for _, row in hl_analysis.iterrows():
+                brief_text += f"- {row['SECURITY']}: {row['INTERPRETATION']} ({row['DELIV_PERC']}%)\n"
+
+    # --- AI Commentary ---
+    commentary += "🧠 AI Commentary:\n"
+    if not delivery_df.empty:
+        high_deliv_top_100 = delivery_df.sort_values(by='DELIV_PERC', ascending=False).head(100)
+        avg_top_100 = high_deliv_top_100['DELIV_PERC'].mean()
+        median_all = delivery_df['DELIV_PERC'].median()
+        if avg_top_100 > 60:
+            commentary += f"• Strong delivery interest in top 100 stocks (avg {avg_top_100:.1f}%) – likely smart money activity.\n"
+        if median_all > 45:
+            commentary += f"• Overall delivery trend across top 500 stocks remains healthy (median {median_all:.1f}%).\n"
+
+    return brief_text, commentary
+
 # --- Streamlit UI ---
 st.title("📈 Morning Market Brief - Dealing Desk")
 
@@ -64,10 +158,8 @@ uploaded_files = st.file_uploader(
     accept_multiple_files=True
 )
 
-# Initialize placeholders
+# --- File detection ---
 gl_file = hl_file = mcap_file = delivery_file = None
-
-# Smart auto-identify based on filename
 for file in uploaded_files or []:
     name = file.name.lower()
     if "gl" in name and name.endswith(".csv"):
@@ -79,134 +171,9 @@ for file in uploaded_files or []:
     elif name.endswith(".dat"):
         delivery_file = file
 
-
-today = datetime.now()
-brief_text = f"""📰 Morning Brief – {today.strftime('%d %b %Y')}
-
-🔹 Nifty View: {outlook}
-
-📈 Nifty Levels:
-- Support: {support}
-- Resistance: {resistance}
-"""
-
-commentary = ""
-top_500 = None
-mcap_df = pd.DataFrame()
-
-# --- Parse MCAP file ---
-if mcap_file:
-    try:
-        mcap_df = pd.read_csv(mcap_file)
-        mcap_df.columns = mcap_df.columns.str.strip()
-        col_map = {col: col.replace('\xa0', ' ').replace('\u200b', '').strip() for col in mcap_df.columns}
-        mcap_df.rename(columns=col_map, inplace=True)
-        mcap_df = mcap_df[['Symbol', 'Security Name', 'Market Cap(Rs.)']].dropna()
-        mcap_df['Market Cap(Rs.)'] = pd.to_numeric(mcap_df['Market Cap(Rs.)'], errors='coerce')
-        mcap_df = mcap_df.sort_values(by='Market Cap(Rs.)', ascending=False)
-        top_500 = set(mcap_df.head(500)['Symbol'].str.strip())
-    except Exception as e:
-        st.error(f"Error reading MCAP file: {e}")
-
-# --- Parse GL file ---
-gainers = pd.DataFrame()
-losers = pd.DataFrame()
-if gl_file:
-    try:
-        gl_df = pd.read_csv(gl_file)
-        gainers, losers = get_gainers_losers(gl_df, top_500)
-        if not gainers.empty:
-            brief_text += "\n📈 Gainers:\n"
-            for _, row in gainers.iterrows():
-                brief_text += f"- {row['SECURITY']} – up {round(row['PERCENT_CG'], 1)}%\n"
-        if not losers.empty:
-            brief_text += "\n📉 Losers:\n"
-            for _, row in losers.iterrows():
-                brief_text += f"- {row['SECURITY']} – down {abs(round(row['PERCENT_CG'], 1))}%\n"
-    except Exception as e:
-        st.error(f"Error reading GL file: {e}")
-
-# --- Parse HL file ---
-hl_df = pd.DataFrame()
-if hl_file:
-    try:
-        hl_df = pd.read_csv(hl_file)
-        hl_df = get_52w_highs_lows(hl_df)
-        if not hl_df.empty:
-            brief_text += "\n🚀 52-Week Highs / Lows:\n"
-            for _, row in hl_df.iterrows():
-                status = "High" if row['NEW_STATUS'] == 'H' else "Low"
-                brief_text += f"- {row['SECURITY']} – {status}\n"
-    except Exception as e:
-        st.error(f"Error reading HL file: {e}")
-
-# --- Parse Delivery file ---
-delivery_df = pd.DataFrame()
-top_delivery = pd.DataFrame()
-if delivery_file:
-    try:
-        lines = delivery_file.getvalue().decode('utf-8').splitlines()
-        data_lines = lines[4:]
-        records = []
-        for line in data_lines:
-            parts = line.strip().split(',')
-            if len(parts) >= 7:
-                segment = parts[3].strip()
-                symbol = parts[2].strip()
-                try:
-                    deliv_perc = float(parts[6])
-                    if segment == 'EQ':
-                        records.append((symbol, deliv_perc))
-                except:
-                    continue
-        delivery_df = pd.DataFrame(records, columns=['SYMBOL', 'DELIV_PERC'])
-        if top_500:
-            delivery_df = delivery_df[delivery_df['SYMBOL'].isin(top_500)]
-        top_delivery = delivery_df.sort_values(by='DELIV_PERC', ascending=False).head(3)
-        if not top_delivery.empty:
-            brief_text += "\n📦 High Delivery % Stocks:\n"
-            for _, row in top_delivery.iterrows():
-                brief_text += f"- {row['SYMBOL']} – {row['DELIV_PERC']}%\n"
-    except Exception as e:
-        st.error(f"Error reading Delivery file: {e}")
-
-# --- Combine HL + SYMBOL + Delivery
-if not hl_df.empty and not delivery_df.empty and not mcap_df.empty:
-    try:
-        hl_df = add_symbols_to_hl(hl_df, mcap_df)
-        hl_analysis = classify_high_low_delivery(hl_df, delivery_df)
-        if not hl_analysis.empty:
-            brief_text += "\n📊 Delivery Insight on 52W Highs/Lows:\n"
-            for _, row in hl_analysis.iterrows():
-                brief_text += f"- {row['SECURITY']}: {row['INTERPRETATION']} ({row['DELIV_PERC']}%)\n"
-    except Exception as e:
-        st.warning(f"Could not cross-link HL with delivery: {e}")
-
-# --- AI Commentary ---
-commentary += "🧠 AI Commentary:\n"
-
-# Hybrid delivery insight
-if not delivery_df.empty:
-    high_deliv_top_100 = delivery_df.sort_values(by='DELIV_PERC', ascending=False).head(100)
-    avg_top_100 = high_deliv_top_100['DELIV_PERC'].mean()
-    median_all = delivery_df['DELIV_PERC'].median()
-
-    if avg_top_100 > 60:
-        commentary += f"• Strong delivery interest in top 100 stocks (avg {avg_top_100:.1f}%) – likely smart money activity.\n"
-    if median_all > 45:
-        commentary += f"• Overall delivery trend across top 500 stocks remains healthy (median {median_all:.1f}%).\n"
-
-
-# --- Button-controlled Generation ---
-if st.button("📋 Generate Morning Brief"):
-    st.session_state.brief_text = brief_text
-    st.session_state.commentary = commentary
-    st.success("✅ Brief generated. Scroll below to view/download.")
-
-# --- Show the stored brief if available ---
-if "brief_text" in st.session_state and st.session_state.brief_text:
-    st.text_area("📋 Copy this brief", st.session_state.brief_text, height=400)
-    if "commentary" in st.session_state and st.session_state.commentary.strip():
-        st.text_area("🧠 Market View", st.session_state.commentary, height=150)
-    st.download_button("💾 Download as .txt", st.session_state.brief_text + "\n\n" + st.session_state.commentary, file_name="morning_brief.txt")
-
+# --- Generate brief ---
+if gl_file and hl_file and mcap_file and delivery_file:
+    brief_text, commentary = generate_brief(gl_file, hl_file, mcap_file, delivery_file, outlook, support, resistance)
+    st.text_area("📋 Copy this brief", brief_text, height=400)
+    st.text_area("🧠 Market View", commentary, height=150)
+    st.download_button("💾 Download as .txt", brief_text + "\n\n" + commentary, file_name="morning_brief.txt")
