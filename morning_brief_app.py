@@ -197,10 +197,16 @@ if not delivery_df.empty:
         commentary += f"• Overall delivery trend across top 500 stocks remains healthy (median {median_all:.1f}%).\n"
 
 
-# --- Output ---
+# --- Button-controlled Generation ---
 if st.button("📋 Generate Morning Brief"):
-    st.text_area("📋 Copy this brief", brief_text, height=400)
-    if commentary.strip():
-        st.text_area("🧠 Market View", commentary, height=150)
-    st.download_button("💾 Download as .txt", brief_text + "\n\n" + commentary, file_name="morning_brief.txt")
-    st.success("Brief ready.")
+    st.session_state.brief_text = brief_text
+    st.session_state.commentary = commentary
+    st.success("✅ Brief generated. Scroll below to view/download.")
+
+# --- Show the stored brief if available ---
+if "brief_text" in st.session_state and st.session_state.brief_text:
+    st.text_area("📋 Copy this brief", st.session_state.brief_text, height=400)
+    if "commentary" in st.session_state and st.session_state.commentary.strip():
+        st.text_area("🧠 Market View", st.session_state.commentary, height=150)
+    st.download_button("💾 Download as .txt", st.session_state.brief_text + "\n\n" + st.session_state.commentary, file_name="morning_brief.txt")
+
