@@ -1,20 +1,22 @@
 import streamlit as st
 import pandas as pd
-import os
 
 st.set_page_config(page_title="Multi-MF Analyzer", layout="wide")
 st.title("📊 Mutual Fund Multi-File Analyzer")
 
-DATA_FOLDER = "data"
+uploaded_files = st.file_uploader(
+    "📂 Drag and drop or browse mutual fund files (.csv or .xlsx)",
+    type=["csv", "xlsx"],
+    accept_multiple_files=True
+)
+
 funds_data = {}
 
-if os.path.exists(DATA_FOLDER):
-    files = [f for f in os.listdir(DATA_FOLDER) if f.endswith(('.csv', '.xlsx'))]
-
-    for filename in files:
-        filepath = os.path.join(DATA_FOLDER, filename)
+if uploaded_files:
+    for file in uploaded_files:
+        filename = file.name
         try:
-            df = pd.read_csv(filepath) if filename.endswith(".csv") else pd.read_excel(filepath)
+            df = pd.read_csv(file) if filename.endswith(".csv") else pd.read_excel(file)
             if 'Invested In' not in df.columns or 'Month Change <br> in Shares %' not in df.columns:
                 st.warning(f"'{filename}' missing required columns.")
                 continue
@@ -64,4 +66,4 @@ if funds_data:
         else:
             st.warning("'Sector' or '% of Total Holding' column missing in the file.")
 else:
-    st.info("No mutual fund files found in the /data folder. Please add .csv or .xlsx files there.")
+    st.info("Upload one or more mutual fund files (.csv or .xlsx) to begin analysis.")
