@@ -96,7 +96,7 @@ if mcap_file and hl_file and delivery_file:
 
             st.markdown(f"**{insight}**")
             filtered = tier_df[tier_df["Delivery Insight"] == insight].copy()
-            filtered = filtered.sort_values(by="Rank")[
+            filtered = filtered.sort_values(by=["% Delivery", "Rank"], ascending=[False, True])[
                 ["Security Name", "Symbol", "High/Low", "% Delivery", "Tier", "Rank"]
             ]
             if not filtered.empty:
@@ -139,7 +139,7 @@ if gl_file:
 
             st.markdown(f"**{insight}**")
             filtered = tier_df[tier_df["Delivery Insight"] == insight].copy()
-            filtered = filtered.sort_values(by="Rank")[
+            filtered = filtered.sort_values(by=["% Delivery", "Rank"], ascending=[False, True])[
                 ["Security Name", "Symbol", "Gain/Loss", "% Delivery", "Delivery Insight", "Rank"]
             ]
             if not filtered.empty:
