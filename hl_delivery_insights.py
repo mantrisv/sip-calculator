@@ -57,8 +57,8 @@ def add_copy_button(df, label):
         st.text_area(f"📋 Copy Stock Names – {label}", tsv, height=150)
 
 def send_email(subject, html_body, to_email):
-    from_email = "your_email@gmail.com"
-    password = "your_app_password"
+    from_email = "mantrisv@gmail.com"
+    password = "skvktpkhlalqwzlz"
     msg = MIMEMultipart("alternative")
     msg["Subject"] = subject
     msg["From"] = from_email
