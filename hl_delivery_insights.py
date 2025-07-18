@@ -2,7 +2,11 @@
 import streamlit as st
 import pandas as pd
 import io
+import smtplib
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
 
+st.set_page_config(page_title="Delivery Insights", layout="wide")
 st.title("📊 52-Week HL + Gainers/Losers Delivery Insights by Tier")
 
 uploaded_files = st.file_uploader("Upload MCAP, HL, GL, and Delivery (.DAT) files", type=["csv", "DAT"], accept_multiple_files=True)
@@ -52,9 +56,24 @@ def add_copy_button(df, label):
         tsv = minimal_df.to_csv(index=False, sep="\t")
         st.text_area(f"📋 Copy Stock Names – {label}", tsv, height=150)
 
-if mcap_file and hl_file and delivery_file:
-    st.success("All required files detected ✅")
+def send_email(subject, html_body, to_email):
+    from_email = "your_email@gmail.com"
+    password = "your_app_password"
+    msg = MIMEMultipart("alternative")
+    msg["Subject"] = subject
+    msg["From"] = from_email
+    msg["To"] = to_email
+    part = MIMEText(html_body, "html")
+    msg.attach(part)
+    server = smtplib.SMTP_SSL("smtp.gmail.com", 465)
+    server.login(from_email, password)
+    server.sendmail(from_email, to_email, msg.as_string())
+    server.quit()
 
+hl_summary_html = ""
+gl_summary_html = ""
+
+if mcap_file and hl_file and delivery_file:
     mcap_df = pd.read_csv(mcap_file)
     mcap_df.columns = mcap_df.columns.str.strip()
     mcap_df = mcap_df.sort_values(by="Market Cap(Rs.)", ascending=False).reset_index(drop=True)
@@ -83,67 +102,87 @@ if mcap_file and hl_file and delivery_file:
     full_df["% Delivery"] = pd.to_numeric(full_df["% Delivery"], errors='coerce')
     full_df["Delivery Insight"] = full_df.apply(lambda row: classify_insight(row["High/Low"], row["% Delivery"]), axis=1)
 
-    st.header("📈 52-Week HL Delivery Insights")
-    for tier in ["T1", "T2", "T3"]:
-        st.subheader(f"📌 {tier} Stocks")
-        tier_df = full_df[full_df["Tier"] == tier]
+    tabs = st.tabs(["📈 HL Insights", "📊 Gainers/Losers", "📤 Email Summary"])
 
-        for insight in [
-            "High on High Delivery = strong hands",
-            "High on Low Delivery = churn",
-            "Low on High Delivery = panic / pressure",
-            "Low on Low Delivery = selling subsiding"]:
+    with tabs[0]:
+        st.header("📈 52-Week HL Delivery Insights")
+        for tier in ["T1", "T2", "T3"]:
+            st.subheader(f"📌 {tier} Stocks")
+            tier_df = full_df[full_df["Tier"] == tier]
 
-            st.markdown(f"**{insight}**")
-            filtered = tier_df[tier_df["Delivery Insight"] == insight].copy()
-            filtered = filtered.sort_values(by=["% Delivery", "Rank"], ascending=[False, True])[
-                ["Security Name", "Symbol", "High/Low", "% Delivery", "Tier", "Rank"]
-            ]
-            if not filtered.empty:
-                st.dataframe(filtered)
-                add_copy_button(filtered, f"{tier} - {insight}")
+            for insight in [
+                "High on High Delivery = strong hands",
+                "High on Low Delivery = churn",
+                "Low on High Delivery = panic / pressure",
+                "Low on Low Delivery = selling subsiding"]:
+
+                filtered = tier_df[tier_df["Delivery Insight"] == insight].copy()
+                filtered = filtered.sort_values(by=["% Delivery", "Rank"], ascending=[False, True])[
+                    ["Security Name", "Symbol", "High/Low", "% Delivery", "Tier", "Rank"]
+                ]
+                count = len(filtered)
+                st.markdown(f"**{insight} ({count})**")
+                if not filtered.empty:
+                    st.dataframe(filtered)
+                    hl_summary_html += f"<h4>{tier} – {insight} ({count})</h4>" + filtered.to_html(index=False)
+                    add_copy_button(filtered, f"{tier} - {insight}")
+                else:
+                    st.info("No data found for this category.")
+
+    if gl_file:
+        gl_df = pd.read_csv(gl_file)
+        gl_df.columns = gl_df.columns.str.strip()
+        gl_df = gl_df.rename(columns={
+            "GAIN_LOSS": "Gain/Loss", 
+            "SECURITY": "Security Name"
+        })
+
+        gl_df["Gain/Loss"] = gl_df["Gain/Loss"].astype(str).str.strip().str.upper()
+        gl_df["Gain/Loss"] = gl_df["Gain/Loss"].map({"G": "GAINER", "L": "LOSER"}).fillna(gl_df["Gain/Loss"])
+        gl_df = gl_df[gl_df["Gain/Loss"].isin(["GAINER", "LOSER"])]
+
+        gl_df["Security Name"] = gl_df["Security Name"].astype(str).str.strip().str.upper()
+        gl_merged = pd.merge(gl_df, mcap_df, on="Security Name", how="left")
+        gl_merged = pd.merge(gl_merged, delivery_df, on="Symbol", how="left")
+
+        gl_merged["% Delivery"] = pd.to_numeric(gl_merged["% Delivery"], errors='coerce')
+        gl_merged["Delivery Insight"] = gl_merged.apply(lambda row: classify_gl(row["Gain/Loss"], row["% Delivery"]), axis=1)
+
+        with tabs[1]:
+            st.header("📌 Tier-wise Gainers / Losers Delivery Insights")
+            for tier in ["T1", "T2", "T3"]:
+                st.subheader(f"📌 {tier} Stocks")
+                tier_df = gl_merged[gl_merged["Tier"] == tier]
+
+                for insight in [
+                    "Gainer on High Delivery = strong hands",
+                    "Gainer on Low Delivery = churn",
+                    "Loser on High Delivery = panic / pressure",
+                    "Loser on Low Delivery = selling subsiding"]:
+
+                    filtered = tier_df[tier_df["Delivery Insight"] == insight].copy()
+                    filtered = filtered.sort_values(by=["% Delivery", "Rank"], ascending=[False, True])[
+                        ["Security Name", "Symbol", "Gain/Loss", "% Delivery", "Delivery Insight", "Rank"]
+                    ]
+                    count = len(filtered)
+                    st.markdown(f"**{insight} ({count})**")
+                    if not filtered.empty:
+                        st.dataframe(filtered)
+                        gl_summary_html += f"<h4>{tier} – {insight} ({count})</h4>" + filtered.to_html(index=False)
+                        add_copy_button(filtered, f"{tier} - {insight}")
+                    else:
+                        st.info("No data found for this category.")
+
+    with tabs[2]:
+        st.subheader("📤 Email Summary (All Insights)")
+        user_email = st.text_input("Enter your email:")
+        if st.button("Send Email"):
+            if user_email and "@" in user_email:
+                body = "<h2>HL Insights</h2>" + hl_summary_html + "<hr><h2>Gainers/Losers</h2>" + gl_summary_html
+                try:
+                    send_email("📈 Full Delivery Insights with Counts", body, user_email)
+                    st.success("Email sent successfully!")
+                except Exception as e:
+                    st.error(f"Failed to send email: {e}")
             else:
-                st.info("No data found for this category.")
-
-if gl_file:
-    st.header("📊 Gainers / Losers Delivery Insights")
-
-    gl_df = pd.read_csv(gl_file)
-    gl_df.columns = gl_df.columns.str.strip()
-    gl_df = gl_df.rename(columns={
-        "GAIN_LOSS": "Gain/Loss", 
-        "SECURITY": "Security Name"
-    })
-
-    gl_df["Gain/Loss"] = gl_df["Gain/Loss"].astype(str).str.strip().str.upper()
-    gl_df["Gain/Loss"] = gl_df["Gain/Loss"].map({"G": "GAINER", "L": "LOSER"}).fillna(gl_df["Gain/Loss"])
-    gl_df = gl_df[gl_df["Gain/Loss"].isin(["GAINER", "LOSER"])]
-
-    gl_df["Security Name"] = gl_df["Security Name"].astype(str).str.strip().str.upper()
-    gl_merged = pd.merge(gl_df, mcap_df, on="Security Name", how="left")
-    gl_merged = pd.merge(gl_merged, delivery_df, on="Symbol", how="left")
-
-    gl_merged["% Delivery"] = pd.to_numeric(gl_merged["% Delivery"], errors='coerce')
-    gl_merged["Delivery Insight"] = gl_merged.apply(lambda row: classify_gl(row["Gain/Loss"], row["% Delivery"]), axis=1)
-
-    st.header("📌 Tier-wise Gainers / Losers Delivery Insights")
-    for tier in ["T1", "T2", "T3"]:
-        st.subheader(f"📌 {tier} Stocks")
-        tier_df = gl_merged[gl_merged["Tier"] == tier]
-
-        for insight in [
-            "Gainer on High Delivery = strong hands",
-            "Gainer on Low Delivery = churn",
-            "Loser on High Delivery = panic / pressure",
-            "Loser on Low Delivery = selling subsiding"]:
-
-            st.markdown(f"**{insight}**")
-            filtered = tier_df[tier_df["Delivery Insight"] == insight].copy()
-            filtered = filtered.sort_values(by=["% Delivery", "Rank"], ascending=[False, True])[
-                ["Security Name", "Symbol", "Gain/Loss", "% Delivery", "Delivery Insight", "Rank"]
-            ]
-            if not filtered.empty:
-                st.dataframe(filtered)
-                add_copy_button(filtered, f"{tier} - {insight}")
-            else:
-                st.info("No data found for this category.")
+                st.warning("Please enter a valid email.")
