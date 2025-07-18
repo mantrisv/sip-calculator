@@ -1,3 +1,4 @@
+
 import streamlit as st
 import pandas as pd
 from datetime import datetime
@@ -15,30 +16,6 @@ def get_gainers_losers(gl_df, top_500=None):
     losers = gl_df[gl_df['GAIN_LOSS'] == 'L'].sort_values(by='PERCENT_CG').head(3)
     return gainers, losers
 
-def get_52w_highs_lows(hl_df):
-    hl_df = hl_df[hl_df['NEW_STATUS'].isin(['H', 'L'])]
-    return hl_df[['SECURITY', 'NEW_STATUS']].head(5)
-
-def classify_high_low_delivery(hl_df_with_symbols, delivery_df):
-    merged_df = hl_df_with_symbols.merge(delivery_df, on='SYMBOL', how='left')
-    merged_df = merged_df.dropna(subset=['DELIV_PERC'])
-
-    def interpret(row):
-        if row['NEW_STATUS'] == 'H':
-            if row['DELIV_PERC'] < 30:
-                return "52W High on Low Delivery – Possible churn"
-            else:
-                return "52W High on High Delivery – Strong hands entry"
-        elif row['NEW_STATUS'] == 'L':
-            if row['DELIV_PERC'] < 30:
-                return "52W Low on Low Delivery – Selling subsiding"
-            else:
-                return "52W Low on High Delivery – Panic or distribution"
-        return None
-
-    merged_df['INTERPRETATION'] = merged_df.apply(interpret, axis=1)
-    return merged_df[['SECURITY', 'NEW_STATUS', 'DELIV_PERC', 'INTERPRETATION']]
-
 def add_symbols_to_hl(hl_df, mcap_df):
     mcap_df = mcap_df.copy()
     mcap_df.columns = mcap_df.columns.str.strip()
@@ -51,23 +28,16 @@ def add_symbols_to_hl(hl_df, mcap_df):
 # --- Streamlit UI ---
 st.title("📈 Morning Market Brief - Dealing Desk")
 
-# Inputs
 outlook = st.text_input("Nifty Opening Outlook", "Nifty likely to open flat tracking global cues.")
 support = st.text_input("Support Levels", "24300 / 24200")
 resistance = st.text_input("Resistance Levels", "24500 / 24630")
 
 st.subheader("📤 Upload All 4 Files (GL, HL, MCAP, Delivery)")
 
-uploaded_files = st.file_uploader(
-    "📥 Drag and drop or browse files",
-    type=["csv", "dat"],
-    accept_multiple_files=True
-)
+uploaded_files = st.file_uploader("📥 Drag and drop or browse files", type=["csv", "dat"], accept_multiple_files=True)
 
-# Initialize placeholders
 gl_file = hl_file = mcap_file = delivery_file = None
 
-# Smart auto-identify based on filename
 for file in uploaded_files or []:
     name = file.name.lower()
     if "gl" in name and name.endswith(".csv"):
@@ -78,7 +48,6 @@ for file in uploaded_files or []:
         mcap_file = file
     elif name.endswith(".dat"):
         delivery_file = file
-
 
 today = datetime.now()
 brief_text = f"""📰 Morning Brief – {today.strftime('%d %b %Y')}
@@ -94,7 +63,7 @@ commentary = ""
 top_500 = None
 mcap_df = pd.DataFrame()
 
-# --- Parse MCAP file ---
+# --- Parse MCAP ---
 if mcap_file:
     try:
         mcap_df = pd.read_csv(mcap_file)
@@ -108,7 +77,7 @@ if mcap_file:
     except Exception as e:
         st.error(f"Error reading MCAP file: {e}")
 
-# --- Parse GL file ---
+# --- Parse GL ---
 gainers = pd.DataFrame()
 losers = pd.DataFrame()
 if gl_file:
@@ -126,15 +95,18 @@ if gl_file:
     except Exception as e:
         st.error(f"Error reading GL file: {e}")
 
-# --- Parse HL file ---
+# --- Parse HL ---
 hl_df = pd.DataFrame()
+hl_full = pd.DataFrame()
 if hl_file:
     try:
         hl_df = pd.read_csv(hl_file)
-        hl_df = get_52w_highs_lows(hl_df)
-        if not hl_df.empty:
+        hl_df = hl_df[hl_df['NEW_STATUS'].isin(['H', 'L'])]
+        hl_full = hl_df.copy()
+        display_df = hl_df.head(5)
+        if not display_df.empty:
             brief_text += "\n🚀 52-Week Highs / Lows:\n"
-            for _, row in hl_df.iterrows():
+            for _, row in display_df.iterrows():
                 status = "High" if row['NEW_STATUS'] == 'H' else "Low"
                 brief_text += f"- {row['SECURITY']} – {status}\n"
     except Exception as e:
@@ -142,21 +114,15 @@ if hl_file:
 
 # --- Parse Delivery file ---
 delivery_df = pd.DataFrame()
-top_delivery = pd.DataFrame()
 if delivery_file:
     try:
         lines = delivery_file.getvalue().decode('utf-8').splitlines()
-        data_lines = lines[4:]
         records = []
-        for line in data_lines:
+        for line in lines[4:]:
             parts = line.strip().split(',')
-            if len(parts) >= 7:
-                segment = parts[3].strip()
-                symbol = parts[2].strip()
+            if len(parts) >= 7 and parts[3].strip() == 'EQ':
                 try:
-                    deliv_perc = float(parts[6])
-                    if segment == 'EQ':
-                        records.append((symbol, deliv_perc))
+                    records.append((parts[2].strip(), float(parts[6])))
                 except:
                     continue
         delivery_df = pd.DataFrame(records, columns=['SYMBOL', 'DELIV_PERC'])
@@ -170,32 +136,44 @@ if delivery_file:
     except Exception as e:
         st.error(f"Error reading Delivery file: {e}")
 
-# --- Combine HL + SYMBOL + Delivery
-if not hl_df.empty and not delivery_df.empty and not mcap_df.empty:
+# --- Delivery Insight ---
+if not hl_full.empty and not delivery_df.empty and not mcap_df.empty:
     try:
-        hl_df = add_symbols_to_hl(hl_df, mcap_df)
-        hl_analysis = classify_high_low_delivery(hl_df, delivery_df)
-        if not hl_analysis.empty:
+        hl_df = add_symbols_to_hl(hl_full, mcap_df)
+        merged = hl_df.merge(delivery_df, on='SYMBOL', how='left').dropna(subset=['DELIV_PERC'])
+        merged = merged.merge(mcap_df[['Symbol', 'Market Cap(Rs.)']], left_on='SYMBOL', right_on='Symbol', how='left')
+        merged.drop(columns=['Symbol'], inplace=True)
+
+        def interpret(row):
+            if row['NEW_STATUS'] == 'H':
+                return "52W High on High Delivery – Strong hands entry" if row['DELIV_PERC'] >= 30 else "52W High on Low Delivery – Possible churn"
+            elif row['NEW_STATUS'] == 'L':
+                return "52W Low on High Delivery – Panic or distribution" if row['DELIV_PERC'] >= 30 else "52W Low on Low Delivery – Selling subsiding"
+            return None
+
+        merged['INTERPRETATION'] = merged.apply(interpret, axis=1)
+
+        top_insights = merged[
+            (merged['NEW_STATUS'] == 'H') & (merged['DELIV_PERC'] >= 30)
+        ].sort_values(by='Market Cap(Rs.)', ascending=False).head(5)
+
+        if not top_insights.empty:
             brief_text += "\n📊 Delivery Insight on 52W Highs/Lows:\n"
-            for _, row in hl_analysis.iterrows():
+            for _, row in top_insights.iterrows():
                 brief_text += f"- {row['SECURITY']}: {row['INTERPRETATION']} ({row['DELIV_PERC']}%)\n"
     except Exception as e:
-        st.warning(f"Could not cross-link HL with delivery: {e}")
+        st.warning(f"Could not process delivery insights: {e}")
 
 # --- AI Commentary ---
-commentary += "🧠 AI Commentary:\n"
-
-# Hybrid delivery insight
+commentary = "🧠 AI Commentary:\n"
 if not delivery_df.empty:
-    high_deliv_top_100 = delivery_df.sort_values(by='DELIV_PERC', ascending=False).head(100)
-    avg_top_100 = high_deliv_top_100['DELIV_PERC'].mean()
-    median_all = delivery_df['DELIV_PERC'].median()
-
-    if avg_top_100 > 60:
-        commentary += f"• Strong delivery interest in top 100 stocks (avg {avg_top_100:.1f}%) – likely smart money activity.\n"
-    if median_all > 45:
-        commentary += f"• Overall delivery trend across top 500 stocks remains healthy (median {median_all:.1f}%).\n"
-
+    top100 = delivery_df.sort_values(by='DELIV_PERC', ascending=False).head(100)
+    avg100 = top100['DELIV_PERC'].mean()
+    median = delivery_df['DELIV_PERC'].median()
+    if avg100 > 60:
+        commentary += f"• Strong delivery in top 100 stocks (avg {avg100:.1f}%)\n"
+    if median > 45:
+        commentary += f"• Overall delivery across top 500 is healthy (median {median:.1f}%)\n"
 
 # --- Output ---
 if st.button("📋 Generate Morning Brief"):
