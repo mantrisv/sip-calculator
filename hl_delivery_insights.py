@@ -1,3 +1,4 @@
+
 import streamlit as st
 import pandas as pd
 import io
@@ -48,13 +49,12 @@ def classify_gl(gain_loss, delivery):
 def add_copy_button(df, label):
     if not df.empty:
         minimal_df = df[["Security Name"]].copy()
-        tsv = minimal_df.to_csv(index=False, sep="	")
+        tsv = minimal_df.to_csv(index=False, sep="\t")
         st.text_area(f"📋 Copy Stock Names – {label}", tsv, height=150)
 
 if mcap_file and hl_file and delivery_file:
     st.success("All required files detected ✅")
 
-    # MCAP
     mcap_df = pd.read_csv(mcap_file)
     mcap_df.columns = mcap_df.columns.str.strip()
     mcap_df = mcap_df.sort_values(by="Market Cap(Rs.)", ascending=False).reset_index(drop=True)
@@ -63,7 +63,6 @@ if mcap_file and hl_file and delivery_file:
     mcap_df["Security Name"] = mcap_df["Security Name"].astype(str).str.strip().str.upper()
     mcap_df["Symbol"] = mcap_df["Symbol"].astype(str).str.strip().str.upper()
 
-    # HL
     hl_df = pd.read_csv(hl_file)
     hl_df.columns = hl_df.columns.str.strip()
     hl_df = hl_df.rename(columns={"SECURITY": "Security Name", "NEW_STATUS": "High/Low"})
@@ -72,7 +71,6 @@ if mcap_file and hl_file and delivery_file:
 
     hl_merged = pd.merge(hl_df, mcap_df, on="Security Name", how="left")
 
-    # Delivery
     delivery_lines = delivery_file.read().decode("utf-8").splitlines()
     delivery_data = [line.strip().split(",") for line in delivery_lines if line.startswith("20,")]
     delivery_df = pd.DataFrame(delivery_data, columns=[
@@ -81,7 +79,6 @@ if mcap_file and hl_file and delivery_file:
     delivery_df["Symbol"] = delivery_df["Symbol"].astype(str).str.strip().str.upper()
     delivery_df["% Delivery"] = pd.to_numeric(delivery_df["% Delivery"], errors='coerce')
 
-    # Merge delivery to HL+MCAP
     full_df = pd.merge(hl_merged, delivery_df, on="Symbol", how="left")
     full_df["% Delivery"] = pd.to_numeric(full_df["% Delivery"], errors='coerce')
     full_df["Delivery Insight"] = full_df.apply(lambda row: classify_insight(row["High/Low"], row["% Delivery"]), axis=1)
@@ -98,15 +95,16 @@ if mcap_file and hl_file and delivery_file:
             "Low on Low Delivery = selling subsiding"]:
 
             st.markdown(f"**{insight}**")
-            filtered = tier_df[tier_df["Delivery Insight"] == insight][[
-                "Security Name", "Symbol", "High/Low", "% Delivery", "Tier"]]
+            filtered = tier_df[tier_df["Delivery Insight"] == insight].copy()
+            filtered = filtered.sort_values(by="Rank")[
+                ["Security Name", "Symbol", "High/Low", "% Delivery", "Tier", "Rank"]
+            ]
             if not filtered.empty:
                 st.dataframe(filtered)
                 add_copy_button(filtered, f"{tier} - {insight}")
             else:
                 st.info("No data found for this category.")
 
-# ------------------------ GAINERS / LOSERS --------------------------
 if gl_file:
     st.header("📊 Gainers / Losers Delivery Insights")
 
@@ -140,8 +138,10 @@ if gl_file:
             "Loser on Low Delivery = selling subsiding"]:
 
             st.markdown(f"**{insight}**")
-            filtered = tier_df[tier_df["Delivery Insight"] == insight][[
-                "Security Name", "Symbol", "Gain/Loss", "% Delivery", "Delivery Insight"]]
+            filtered = tier_df[tier_df["Delivery Insight"] == insight].copy()
+            filtered = filtered.sort_values(by="Rank")[
+                ["Security Name", "Symbol", "Gain/Loss", "% Delivery", "Delivery Insight", "Rank"]
+            ]
             if not filtered.empty:
                 st.dataframe(filtered)
                 add_copy_button(filtered, f"{tier} - {insight}")
