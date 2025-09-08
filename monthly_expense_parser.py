@@ -12,6 +12,7 @@ CATEGORY_RULES = {
     "Utilities": ["phone", "PUC", "rights issue"],
     "Credit Card": ["credit card"],
     "Food": ["swagath", "chefs", "theory", "mukhis", "vithaldas"],
+    "Hotwheels": ["hotwheels"],
     "Books": ["books"],
     "Miscellaneous": ["misc", "adjustment", "frameley", "mini tatal", "syed", "jio star"],
     "Savings": ["savings"],
