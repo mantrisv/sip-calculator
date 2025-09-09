@@ -1,3 +1,4 @@
+
 import streamlit as st
 import pandas as pd
 import re
@@ -51,18 +52,17 @@ def main():
     if pasted_text:
         df = parse_pasted_data(pasted_text)
 
-        # Show table
-        st.subheader("Parsed Expenses")
-        st.dataframe(df)
+        # Category totals only
+        summary = df.groupby("Category", dropna=False)["Amount"].sum().reset_index()
+        summary = summary.rename(columns={"Amount": "Total"}).sort_values("Total", ascending=False)
 
-        # Show category-wise summary
-        st.subheader("Category Summary")
-        summary = df.groupby("Category")["Amount"].sum().reset_index()
-        st.dataframe(summary)
+        st.subheader("Category Totals")
+        st.dataframe(summary, use_container_width=True)
+        st.caption(f"Grand Total: ₹{summary['Total'].sum():,}")
 
         # Pie chart
         fig, ax = plt.subplots()
-        ax.pie(summary["Amount"], labels=summary["Category"], autopct='%1.1f%%')
+        ax.pie(summary["Total"], labels=summary["Category"], autopct='%1.1f%%')
         ax.axis("equal")
         st.pyplot(fig)
 
