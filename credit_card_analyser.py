@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import matplotlib.pyplot as plt
 from io import StringIO
 
 # =======================
@@ -8,7 +9,7 @@ from io import StringIO
 st.set_page_config(page_title="Credit Card Drilldown", layout="wide")
 
 st.title("💳 Credit Card Spend – Category Drill-down")
-st.caption("Category → Merchant breakup (like Expense Analyser)")
+st.caption("Category → Pie → Merchant breakup")
 
 # =======================
 # INPUT
@@ -104,23 +105,38 @@ if filtered_df.empty:
     st.stop()
 
 # =======================
-# OVERALL SUMMARY
+# SUMMARY
 # =======================
 st.subheader("📊 Overall Summary")
 st.metric("Total Credit Card Spend", f"₹ {filtered_df['Amount'].sum():,.0f}")
+
+# =======================
+# PIE CHART (BACK 🔥)
+# =======================
+st.subheader("🥧 Category-wise Spend")
+
+pie_df = (
+    filtered_df.groupby("Category")["Amount"]
+    .sum()
+    .sort_values(ascending=False)
+)
+
+fig, ax = plt.subplots()
+ax.pie(
+    pie_df.values,
+    labels=pie_df.index,
+    autopct="%1.1f%%",
+    startangle=90
+)
+ax.axis("equal")
+st.pyplot(fig)
 
 # =======================
 # CATEGORY DRILL-DOWN
 # =======================
 st.subheader("🔍 Category Drill-down")
 
-category_totals = (
-    filtered_df.groupby("Category")["Amount"]
-    .sum()
-    .sort_values(ascending=False)
-)
-
-for category, cat_total in category_totals.items():
+for category, cat_total in pie_df.items():
     with st.expander(f"{category}  |  ₹ {cat_total:,.0f}"):
         sub = (
             filtered_df[filtered_df["Category"] == category]
