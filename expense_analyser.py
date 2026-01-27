@@ -15,38 +15,80 @@ st.title("💸 Personal Expense Analyser")
 st.caption("Bucket → Sub-category → Transactions")
 
 # =======================
-# BUCKET LOGIC
+# BUCKET LOGIC (FINAL)
 # =======================
 def bucketize(head):
     h = head.lower()
-    if any(x in h for x in ["school","emi","maintenance","electricity","credit","home","interest"]):
-        return "Fixed"
-    if any(x in h for x in ["sip","nps","fund","gold","ppf"]):
+
+    # -------- INVESTMENTS (TOP PRIORITY) --------
+    if any(x in h for x in [
+        "sushil", "rba",        # equity / shares
+        "safeg",                # gold
+        "savings",              # cash savings
+        "sip", "nps", "fund", "gold", "ppf"
+    ]):
         return "Investment"
-    if any(x in h for x in ["food","hotel","restaurant","cafe","swagath","travel","taxi"]):
+
+    # -------- FIXED --------
+    if any(x in h for x in [
+        "school", "emi", "maintenance",
+        "electricity", "credit", "home", "interest"
+    ]):
+        return "Fixed"
+
+    # -------- LIFESTYLE --------
+    if any(x in h for x in [
+        "food", "hotel", "restaurant",
+        "cafe", "swagath", "travel",
+        "taxi", "shopping"
+    ]):
         return "Lifestyle"
-    if any(x in h for x in ["hotwheels","lego","toy","collect"]):
+
+    # -------- HOBBY --------
+    if any(x in h for x in [
+        "hotwheels", "lego", "toy", "collect"
+    ]):
         return "Hobby"
+
     return "Misc"
+
 
 def sub_category(head):
     h = head.lower()
+
+    # -------- INVESTMENT SUB-CATEGORIES --------
+    if "sushil" in h or "rba" in h:
+        return "Equity / Shares"
+
+    if "safeg" in h:
+        return "Gold Investment"
+
+    if "savings" in h:
+        return "Cash / Savings"
+
+    if any(x in h for x in ["sip", "nps", "fund", "ppf"]):
+        return "Market Investments"
+
+    # -------- FIXED --------
     if "school" in h:
         return "School Fees"
+
     if "home" in h or "emi" in h:
         return "Home / Loan EMI"
+
     if "maintenance" in h:
         return "Society Maintenance"
+
     if "electricity" in h:
         return "Utilities"
+
     if "credit" in h:
         return "Credit Card"
-    if "sip" in h or "nps" in h or "fund" in h:
-        return "Investments"
-    if "hotwheels" in h or "lego" in h:
-        return "Collectibles"
-    if any(x in h for x in ["food","hotel","restaurant","cafe"]):
-        return "Food & Dining"
+
+    # -------- LIFESTYLE --------
+    if any(x in h for x in ["food","hotel","restaurant","cafe","shopping"]):
+        return "Food & Lifestyle"
+
     return "Other"
 
 # =======================
@@ -54,13 +96,12 @@ def sub_category(head):
 # =======================
 st.subheader("📋 Paste Expense Data")
 
-sample_data = """17500\tpremium school
-21470\tnew home emi
-2000\tnps contribution
+sample_data = """25025\tsushil rba
+20547\tsavings
+4203\tsafeg
 24900\tcredit card
+17500\tpremium school
 6559\tswagath
-3200\tvikrant ot classes
-1000\tnippon sip
 """
 
 use_sample = st.checkbox("Load sample data")
@@ -68,7 +109,7 @@ use_sample = st.checkbox("Load sample data")
 raw_text = st.text_area(
     "Format: Outflow<TAB>Description",
     value=sample_data if use_sample else "",
-    height=250
+    height=260
 )
 
 if not raw_text.strip():
@@ -78,7 +119,7 @@ if not raw_text.strip():
 # =======================
 # DATA PARSE
 # =======================
-df = pd.read_csv(StringIO(raw_text), sep="\t", names=["Outflow","Head"])
+df = pd.read_csv(StringIO(raw_text), sep="\t", names=["Outflow", "Head"])
 df["Outflow"] = pd.to_numeric(df["Outflow"], errors="coerce")
 df.dropna(inplace=True)
 
@@ -105,19 +146,24 @@ st.subheader("📊 Summary")
 
 col1, col2 = st.columns(2)
 with col1:
-    st.metric("Total Spend", f"₹ {filtered['Outflow'].sum():,.0f}")
+    st.metric("Total Amount", f"₹ {filtered['Outflow'].sum():,.0f}")
 with col2:
     st.metric("Transactions", len(filtered))
 
 # =======================
 # PIE CHART
 # =======================
-st.subheader("🥧 Expense Distribution")
+st.subheader("🥧 Distribution by Bucket")
 
 summary = filtered.groupby("Bucket")["Outflow"].sum()
 
 fig, ax = plt.subplots()
-ax.pie(summary.values, labels=summary.index, autopct="%1.1f%%", startangle=90)
+ax.pie(
+    summary.values,
+    labels=summary.index,
+    autopct="%1.1f%%",
+    startangle=90
+)
 ax.axis("equal")
 st.pyplot(fig)
 
@@ -127,7 +173,7 @@ st.pyplot(fig)
 st.subheader("🔍 Category Drill-down")
 
 for bucket in filtered["Bucket"].unique():
-    with st.expander(f"{bucket} Expenses"):
+    with st.expander(f"{bucket} Details"):
         temp = filtered[filtered["Bucket"] == bucket]
 
         st.metric(
@@ -148,6 +194,6 @@ for bucket in filtered["Bucket"].unique():
 
         with tab2:
             st.dataframe(
-                temp[["Outflow","Head","SubCategory"]],
+                temp[["Outflow", "Head", "SubCategory"]],
                 use_container_width=True
             )
