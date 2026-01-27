@@ -12,19 +12,19 @@ st.set_page_config(page_title="Expense Analyser", layout="wide")
 # TITLE
 # =======================
 st.title("💸 Personal Expense Analyser")
-st.caption("Bucket → Sub-category → Transactions")
+st.caption("Bucket → Sub-category → Transactions → % Contribution")
 
 # =======================
-# BUCKET LOGIC (FINAL)
+# BUCKET LOGIC
 # =======================
 def bucketize(head):
     h = head.lower()
 
     # -------- INVESTMENTS (TOP PRIORITY) --------
     if any(x in h for x in [
-        "sushil", "rba",        # equity / shares
-        "safeg",                # gold
-        "savings",              # cash savings
+        "sushil", "rba",
+        "safeg",
+        "savings",
         "sip", "nps", "fund", "gold", "ppf"
     ]):
         return "Investment"
@@ -183,15 +183,27 @@ for bucket in filtered["Bucket"].unique():
 
         tab1, tab2 = st.tabs(["📊 Sub-category breakup", "📄 Transactions"])
 
+        # ---------- SUB-CATEGORY WITH % ----------
         with tab1:
-            st.dataframe(
+            sub_df = (
                 temp.groupby("SubCategory")["Outflow"]
                 .sum()
                 .reset_index()
-                .sort_values("Outflow", ascending=False),
+                .sort_values("Outflow", ascending=False)
+            )
+
+            total_bucket = sub_df["Outflow"].sum()
+
+            sub_df["% of Category"] = (
+                sub_df["Outflow"] / total_bucket * 100
+            ).round(1)
+
+            st.dataframe(
+                sub_df,
                 use_container_width=True
             )
 
+        # ---------- TRANSACTIONS ----------
         with tab2:
             st.dataframe(
                 temp[["Outflow", "Head", "SubCategory"]],
