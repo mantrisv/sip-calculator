@@ -1,11 +1,8 @@
 import streamlit as st
-import cv2
-import av
+import streamlit.components.v1 as components
 import requests
 import gspread
-from pyzbar.pyzbar import decode
 from google.oauth2.service_account import Credentials
-from streamlit_webrtc import webrtc_streamer, VideoTransformerBase
 from datetime import datetime
 
 # -----------------------------
@@ -19,6 +16,10 @@ scope = [
     "https://www.googleapis.com/auth/drive"
 ]
 
+# -----------------------------
+# GOOGLE AUTH
+# -----------------------------
+
 creds = Credentials.from_service_account_info(
     st.secrets["gcp_service_account"],
     scopes=scope
@@ -26,7 +27,6 @@ creds = Credentials.from_service_account_info(
 
 client = gspread.authorize(creds)
 sheet = client.open_by_key(SHEET_ID).sheet1
-
 
 # -----------------------------
 # FUNCTIONS
@@ -46,7 +46,8 @@ def fetch_book(isbn):
         "title": volume.get("title", ""),
         "authors": ", ".join(volume.get("authors", [])),
         "publisher": volume.get("publisher", ""),
-        "published_date": volume.get("publishedDate", "")
+        "published_date": volume.get("publishedDate", ""),
+        "thumbnail": volume.get("imageLinks", {}).get("thumbnail", "")
     }
 
 
@@ -59,45 +60,41 @@ def isbn_exists(isbn):
 
 
 # -----------------------------
-# SESSION STATE
-# -----------------------------
-
-if "isbn" not in st.session_state:
-    st.session_state.isbn = ""
-
-
-# -----------------------------
-# BARCODE SCANNER CLASS
-# -----------------------------
-
-class BarcodeScanner(VideoTransformerBase):
-    def transform(self, frame):
-        img = frame.to_ndarray(format="bgr24")
-        barcodes = decode(img)
-
-        for barcode in barcodes:
-            isbn = barcode.data.decode("utf-8")
-            st.session_state.isbn = isbn
-
-            (x, y, w, h) = barcode.rect
-            cv2.rectangle(img, (x, y), (x + w, y + h), (0, 255, 0), 2)
-
-        return img
-
-
-# -----------------------------
 # UI
 # -----------------------------
 
+st.set_page_config(page_title="My ISBN Library")
 st.title("📚 My ISBN Library")
 st.markdown("### 📷 Scan Book Barcode")
 
-webrtc_streamer(
-    key="scanner",
-    video_transformer_factory=BarcodeScanner,
-)
+# Scanner (browser-side only)
+html_code = """
+<div id="reader" style="width:300px;"></div>
 
-isbn_input = st.text_input("Scanned ISBN", value=st.session_state.isbn)
+<script src="https://unpkg.com/html5-qrcode"></script>
+
+<script>
+function onScanSuccess(decodedText) {
+    const input = window.parent.document.querySelector('input[type="text"]');
+    if (input) {
+        input.value = decodedText;
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+}
+
+var scanner = new Html5QrcodeScanner(
+    "reader",
+    { fps: 10, qrbox: 250 }
+);
+
+scanner.render(onScanSuccess);
+</script>
+"""
+
+components.html(html_code, height=400)
+
+# Text input
+isbn_input = st.text_input("Scanned ISBN will appear here")
 
 # -----------------------------
 # ADD BOOK
@@ -129,10 +126,17 @@ if st.button("➕ Add Book"):
                 ])
 
                 st.success("✅ Book added successfully!")
-                st.session_state.isbn = ""
+
+                if book["thumbnail"]:
+                    st.image(book["thumbnail"], width=150)
+
+                st.write("**Title:**", book["title"])
+                st.write("**Authors:**", book["authors"])
+                st.write("**Publisher:**", book["publisher"])
+                st.write("**Published:**", book["published_date"])
 
             else:
-                st.error("Book not found.")
+                st.error("Book not found in Google Books.")
 
 
 # -----------------------------
