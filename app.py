@@ -17,7 +17,7 @@ scope = [
 ]
 
 # -----------------------------
-# GOOGLE AUTH (CLOUD ONLY)
+# GOOGLE AUTH (CLOUD)
 # -----------------------------
 
 creds = Credentials.from_service_account_info(
@@ -30,7 +30,7 @@ sheet = client.open_by_key(SHEET_ID).sheet1
 
 
 # -----------------------------
-# GOOGLE BOOKS FETCH
+# FETCH BOOK DATA
 # -----------------------------
 
 def fetch_book(isbn):
@@ -64,12 +64,13 @@ def isbn_exists(isbn):
 # UI
 # -----------------------------
 
-st.set_page_config(page_title="ISBN Library")
+st.set_page_config(page_title="My ISBN Library")
 
 st.title("📚 My ISBN Library")
 
 st.markdown("### 📷 Scan Book Barcode")
 
+# Scanner
 html_code = """
 <div id="reader" style="width:300px;"></div>
 
@@ -97,11 +98,11 @@ components.html(html_code, height=400)
 
 isbn_input = st.text_input("Scanned ISBN will appear here")
 
-isbn_input = st.text_input("Scanned ISBN will appear here")
-
 if st.button("➕ Add Book"):
-    if isbn_input:
 
+    if not isbn_input:
+        st.warning("Scan or enter ISBN first.")
+    else:
         isbn = isbn_input.strip()
 
         if isbn_exists(isbn):
@@ -122,7 +123,7 @@ if st.button("➕ Add Book"):
                     ""
                 ])
 
-                st.success("✅ Book added!")
+                st.success("✅ Book added successfully!")
 
                 if book["thumbnail"]:
                     st.image(book["thumbnail"], width=150)
@@ -131,7 +132,20 @@ if st.button("➕ Add Book"):
                 st.write("**Authors:**", book["authors"])
                 st.write("**Publisher:**", book["publisher"])
                 st.write("**Published:**", book["published_date"])
+
             else:
                 st.error("Book not found in Google Books.")
-    else:
-        st.warning("Scan or enter ISBN first.")
+
+
+# -----------------------------
+# LIBRARY VIEW
+# -----------------------------
+
+st.markdown("## 📖 Library")
+
+records = sheet.get_all_records()
+
+if records:
+    st.dataframe(records, use_container_width=True)
+else:
+    st.info("No books added yet.")
