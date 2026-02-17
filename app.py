@@ -67,7 +67,7 @@ st.set_page_config(page_title="My ISBN Library")
 st.title("📚 My ISBN Library")
 st.markdown("### 📷 Scan Book Barcode")
 
-# Scanner (browser-side only)
+# Scanner (browser-side)
 html_code = """
 <div id="reader" style="width:300px;"></div>
 
@@ -75,10 +75,14 @@ html_code = """
 
 <script>
 function onScanSuccess(decodedText) {
-    const input = window.parent.document.querySelector('input[type="text"]');
-    if (input) {
-        input.value = decodedText;
-        input.dispatchEvent(new Event('input', { bubbles: true }));
+    const inputs = window.parent.document.querySelectorAll('input');
+
+    for (let i = 0; i < inputs.length; i++) {
+        if (inputs[i].placeholder && inputs[i].placeholder.includes("ISBN")) {
+            inputs[i].value = decodedText;
+            inputs[i].dispatchEvent(new Event('input', { bubbles: true }));
+            break;
+        }
     }
 }
 
@@ -93,7 +97,7 @@ scanner.render(onScanSuccess);
 
 components.html(html_code, height=400)
 
-# Text input
+# Text input (IMPORTANT: keep label containing ISBN)
 isbn_input = st.text_input("Scanned ISBN will appear here")
 
 # -----------------------------
