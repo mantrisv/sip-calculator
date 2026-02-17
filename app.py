@@ -1,8 +1,11 @@
 import streamlit as st
-import streamlit.components.v1 as components
+import cv2
+import av
 import requests
 import gspread
+from pyzbar.pyzbar import decode
 from google.oauth2.service_account import Credentials
+from streamlit_webrtc import webrtc_streamer, VideoTransformerBase
 from datetime import datetime
 
 # -----------------------------
@@ -16,10 +19,6 @@ scope = [
     "https://www.googleapis.com/auth/drive"
 ]
 
-# -----------------------------
-# GOOGLE AUTH
-# -----------------------------
-
 creds = Credentials.from_service_account_info(
     st.secrets["gcp_service_account"],
     scopes=scope
@@ -27,6 +26,7 @@ creds = Credentials.from_service_account_info(
 
 client = gspread.authorize(creds)
 sheet = client.open_by_key(SHEET_ID).sheet1
+
 
 # -----------------------------
 # FUNCTIONS
@@ -59,42 +59,45 @@ def isbn_exists(isbn):
 
 
 # -----------------------------
+# SESSION STATE
+# -----------------------------
+
+if "isbn" not in st.session_state:
+    st.session_state.isbn = ""
+
+
+# -----------------------------
+# BARCODE SCANNER CLASS
+# -----------------------------
+
+class BarcodeScanner(VideoTransformerBase):
+    def transform(self, frame):
+        img = frame.to_ndarray(format="bgr24")
+        barcodes = decode(img)
+
+        for barcode in barcodes:
+            isbn = barcode.data.decode("utf-8")
+            st.session_state.isbn = isbn
+
+            (x, y, w, h) = barcode.rect
+            cv2.rectangle(img, (x, y), (x + w, y + h), (0, 255, 0), 2)
+
+        return img
+
+
+# -----------------------------
 # UI
 # -----------------------------
 
-st.set_page_config(page_title="My ISBN Library")
 st.title("📚 My ISBN Library")
 st.markdown("### 📷 Scan Book Barcode")
 
-# Scanner that updates query params
-html_code = """
-<div id="reader" style="width:300px;"></div>
+webrtc_streamer(
+    key="scanner",
+    video_transformer_factory=BarcodeScanner,
+)
 
-<script src="https://unpkg.com/html5-qrcode"></script>
-
-<script>
-function onScanSuccess(decodedText) {
-    const url = new URL(window.location);
-    url.searchParams.set("isbn", decodedText);
-    window.location.href = url.toString();
-}
-
-var scanner = new Html5QrcodeScanner(
-    "reader",
-    { fps: 10, qrbox: 250 }
-);
-
-scanner.render(onScanSuccess);
-</script>
-"""
-
-components.html(html_code, height=400)
-
-# Read ISBN from query params
-query_params = st.query_params
-isbn_input = query_params.get("isbn", "")
-
-isbn = st.text_input("Scanned ISBN will appear here", value=isbn_input)
+isbn_input = st.text_input("Scanned ISBN", value=st.session_state.isbn)
 
 # -----------------------------
 # ADD BOOK
@@ -102,9 +105,10 @@ isbn = st.text_input("Scanned ISBN will appear here", value=isbn_input)
 
 if st.button("➕ Add Book"):
 
-    if not isbn:
+    if not isbn_input:
         st.warning("Scan or enter ISBN first.")
     else:
+        isbn = isbn_input.strip()
 
         if isbn_exists(isbn):
             st.warning("⚠ Book already exists.")
@@ -125,12 +129,10 @@ if st.button("➕ Add Book"):
                 ])
 
                 st.success("✅ Book added successfully!")
-
-                # Clear URL param after success
-                st.query_params.clear()
+                st.session_state.isbn = ""
 
             else:
-                st.error("Book not found in Google Books.")
+                st.error("Book not found.")
 
 
 # -----------------------------
