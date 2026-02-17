@@ -4,3 +4,9 @@ matplotlib
 gspread
 google-auth
 openpyxl
+requests
+streamlit-webrtc
+opencv-python-headless
+pyzbar
+av
+
