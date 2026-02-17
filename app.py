@@ -65,12 +65,10 @@ def isbn_exists(isbn):
 # -----------------------------
 
 st.set_page_config(page_title="My ISBN Library")
-
 st.title("📚 My ISBN Library")
-
 st.markdown("### 📷 Scan Book Barcode")
 
-# Scanner
+# Scanner Component
 html_code = """
 <div id="reader" style="width:300px;"></div>
 
@@ -96,56 +94,34 @@ html5QrcodeScanner.render(onScanSuccess);
 
 components.html(html_code, height=400)
 
-isbn_input = st.text_input("Scanned ISBN will appear here")
 
-if st.button("➕ Add Book"):
+# -----------------------------
+# AUTO ADD LOGIC
+# -----------------------------
 
-    if not isbn_input:
-        st.warning("Scan or enter ISBN first.")
+if "last_processed_isbn" not in st.session_state:
+    st.session_state.last_processed_isbn = None
+
+isbn_input = st.text_input("Scanned ISBN will appear here", key="isbn_input")
+
+if isbn_input and isbn_input != st.session_state.last_processed_isbn:
+
+    isbn = isbn_input.strip()
+
+    if isbn_exists(isbn):
+        st.warning("⚠ Book already exists.")
+        st.session_state.last_processed_isbn = isbn
+
     else:
-        isbn = isbn_input.strip()
+        book = fetch_book(isbn)
 
-        if isbn_exists(isbn):
-            st.warning("⚠ Book already exists.")
-        else:
-            book = fetch_book(isbn)
-
-            if book:
-                sheet.append_row([
-                    datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                    isbn,
-                    book["title"],
-                    book["authors"],
-                    book["publisher"],
-                    book["published_date"],
-                    "Not Started",
-                    "",
-                    ""
-                ])
-
-                st.success("✅ Book added successfully!")
-
-                if book["thumbnail"]:
-                    st.image(book["thumbnail"], width=150)
-
-                st.write("**Title:**", book["title"])
-                st.write("**Authors:**", book["authors"])
-                st.write("**Publisher:**", book["publisher"])
-                st.write("**Published:**", book["published_date"])
-
-            else:
-                st.error("Book not found in Google Books.")
-
-
-# -----------------------------
-# LIBRARY VIEW
-# -----------------------------
-
-st.markdown("## 📖 Library")
-
-records = sheet.get_all_records()
-
-if records:
-    st.dataframe(records, use_container_width=True)
-else:
-    st.info("No books added yet.")
+        if book:
+            sheet.append_row([
+                datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                isbn,
+                book["title"],
+                book["authors"],
+                book["publisher"],
+                book["published_date"],
+                "Not Started",
+                ""
