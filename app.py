@@ -28,7 +28,6 @@ creds = Credentials.from_service_account_info(
 client = gspread.authorize(creds)
 sheet = client.open_by_key(SHEET_ID).sheet1
 
-
 # -----------------------------
 # FUNCTIONS
 # -----------------------------
@@ -68,6 +67,10 @@ st.set_page_config(page_title="My ISBN Library")
 st.title("📚 My ISBN Library")
 st.markdown("### 📷 Scan Book Barcode")
 
+# Initialize session state
+if "isbn_input" not in st.session_state:
+    st.session_state.isbn_input = ""
+
 # Scanner
 html_code = """
 <div id="reader" style="width:300px;"></div>
@@ -94,19 +97,22 @@ scanner.render(onScanSuccess);
 
 components.html(html_code, height=400)
 
+# Text Input (bound to session_state)
+isbn_input = st.text_input(
+    "Scanned ISBN will appear here",
+    key="isbn_input"
+)
 
 # -----------------------------
-# INPUT + BUTTON (STABLE FLOW)
+# ADD BOOK LOGIC
 # -----------------------------
-
-isbn_input = st.text_input("Scanned ISBN will appear here")
 
 if st.button("➕ Add Book"):
 
-    if not isbn_input:
+    if not st.session_state.isbn_input:
         st.warning("Scan or enter ISBN first.")
     else:
-        isbn = isbn_input.strip()
+        isbn = st.session_state.isbn_input.strip()
 
         if isbn_exists(isbn):
             st.warning("⚠ Book already exists.")
@@ -128,13 +134,8 @@ if st.button("➕ Add Book"):
 
                 st.success("✅ Book added successfully!")
 
-                if book["thumbnail"]:
-                    st.image(book["thumbnail"], width=150)
-
-                st.write("**Title:**", book["title"])
-                st.write("**Authors:**", book["authors"])
-                st.write("**Publisher:**", book["publisher"])
-                st.write("**Published:**", book["published_date"])
+                # Clear input after success
+                st.session_state.isbn_input = ""
 
             else:
                 st.error("Book not found in Google Books.")
