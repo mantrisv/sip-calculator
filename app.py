@@ -5,39 +5,33 @@ import gspread
 from google.oauth2.service_account import Credentials
 from datetime import datetime
 
-# ---------------------------
+# -----------------------------
 # CONFIG
-# ---------------------------
+# -----------------------------
 
-SHEET_ID = "1X67okMAGzu15olxtR8UhRDQam2HmqjWgDsj2fLhhvLc"   # Only the ID
+SHEET_ID = "1X67okMAGzu15olxtR8UhRDQam2HmqjWgDsj2fLhhvLc"
 
 scope = [
     "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/drive"
 ]
 
-# ---------------------------
-# GOOGLE AUTH (LOCAL + CLOUD)
-# ---------------------------
+# -----------------------------
+# GOOGLE AUTH (CLOUD ONLY)
+# -----------------------------
 
-try:
-    creds = Credentials.from_service_account_info(
-        st.secrets["gcp_service_account"],
-        scopes=scope
-    )
-except Exception:
-    creds = Credentials.from_service_account_file(
-        "credentials.json",
-        scopes=scope
-    )
+creds = Credentials.from_service_account_info(
+    st.secrets["gcp_service_account"],
+    scopes=scope
+)
 
 client = gspread.authorize(creds)
 sheet = client.open_by_key(SHEET_ID).sheet1
 
 
-# ---------------------------
+# -----------------------------
 # GOOGLE BOOKS FETCH
-# ---------------------------
+# -----------------------------
 
 def fetch_book(isbn):
     url = f"https://www.googleapis.com/books/v1/volumes?q=isbn:{isbn}"
@@ -58,10 +52,6 @@ def fetch_book(isbn):
     }
 
 
-# ---------------------------
-# DUPLICATE CHECK
-# ---------------------------
-
 def isbn_exists(isbn):
     records = sheet.get_all_records()
     for row in records:
@@ -70,17 +60,16 @@ def isbn_exists(isbn):
     return False
 
 
-# ---------------------------
+# -----------------------------
 # UI
-# ---------------------------
+# -----------------------------
 
-st.set_page_config(page_title="ISBN Scanner Library")
+st.set_page_config(page_title="ISBN Library")
 
 st.title("📚 My ISBN Library")
 
 st.markdown("### 📷 Scan Book Barcode")
 
-# HTML5 Barcode Scanner
 html_code = """
 <div id="reader" style="width:300px;"></div>
 
@@ -142,10 +131,6 @@ if isbn_input:
         else:
             st.error("Book not found in Google Books.")
 
-
-# ---------------------------
-# LIBRARY VIEW
-# ---------------------------
 
 st.markdown("## 📖 Library")
 
