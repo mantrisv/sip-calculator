@@ -17,7 +17,7 @@ scope = [
 ]
 
 # -----------------------------
-# GOOGLE AUTH (CLOUD)
+# GOOGLE AUTH
 # -----------------------------
 
 creds = Credentials.from_service_account_info(
@@ -68,14 +68,14 @@ st.set_page_config(page_title="My ISBN Library")
 st.title("📚 My ISBN Library")
 st.markdown("### 📷 Scan Book Barcode")
 
-# Scanner Component
+# Scanner
 html_code = """
 <div id="reader" style="width:300px;"></div>
 
-<script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+<script src="https://unpkg.com/html5-qrcode"></script>
 
 <script>
-function onScanSuccess(decodedText, decodedResult) {
+function onScanSuccess(decodedText) {
     const input = window.parent.document.querySelector('input[type="text"]');
     if (input) {
         input.value = decodedText;
@@ -83,12 +83,12 @@ function onScanSuccess(decodedText, decodedResult) {
     }
 }
 
-var html5QrcodeScanner = new Html5QrcodeScanner(
+var scanner = new Html5QrcodeScanner(
     "reader",
     { fps: 10, qrbox: 250 }
 );
 
-html5QrcodeScanner.render(onScanSuccess);
+scanner.render(onScanSuccess);
 </script>
 """
 
@@ -96,53 +96,48 @@ components.html(html_code, height=400)
 
 
 # -----------------------------
-# AUTO ADD LOGIC
+# INPUT + BUTTON (STABLE FLOW)
 # -----------------------------
 
-if "last_processed_isbn" not in st.session_state:
-    st.session_state.last_processed_isbn = None
+isbn_input = st.text_input("Scanned ISBN will appear here")
 
-isbn_input = st.text_input("Scanned ISBN will appear here", key="isbn_input")
+if st.button("➕ Add Book"):
 
-if isbn_input and isbn_input != st.session_state.last_processed_isbn:
-
-    isbn = isbn_input.strip()
-
-    if isbn_exists(isbn):
-        st.warning("⚠ Book already exists.")
-        st.session_state.last_processed_isbn = isbn
-
+    if not isbn_input:
+        st.warning("Scan or enter ISBN first.")
     else:
-        book = fetch_book(isbn)
+        isbn = isbn_input.strip()
 
-        if book:
-            sheet.append_row([
-                datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                isbn,
-                book["title"],
-                book["authors"],
-                book["publisher"],
-                book["published_date"],
-                "Not Started",
-                "",
-                ""
-            ])
-
-            st.success("✅ Book added successfully!")
-
-            if book["thumbnail"]:
-                st.image(book["thumbnail"], width=150)
-
-            st.write("**Title:**", book["title"])
-            st.write("**Authors:**", book["authors"])
-            st.write("**Publisher:**", book["publisher"])
-            st.write("**Published:**", book["published_date"])
-
-            st.session_state.last_processed_isbn = isbn
-
+        if isbn_exists(isbn):
+            st.warning("⚠ Book already exists.")
         else:
-            st.error("Book not found in Google Books.")
-            st.session_state.last_processed_isbn = isbn
+            book = fetch_book(isbn)
+
+            if book:
+                sheet.append_row([
+                    datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    isbn,
+                    book["title"],
+                    book["authors"],
+                    book["publisher"],
+                    book["published_date"],
+                    "Not Started",
+                    "",
+                    ""
+                ])
+
+                st.success("✅ Book added successfully!")
+
+                if book["thumbnail"]:
+                    st.image(book["thumbnail"], width=150)
+
+                st.write("**Title:**", book["title"])
+                st.write("**Authors:**", book["authors"])
+                st.write("**Publisher:**", book["publisher"])
+                st.write("**Published:**", book["published_date"])
+
+            else:
+                st.error("Book not found in Google Books.")
 
 
 # -----------------------------
