@@ -1,36 +1,43 @@
 import streamlit as st
+import streamlit.components.v1 as components
 import requests
 import gspread
-import cv2
-import numpy as np
-from pyzbar.pyzbar import decode
 from google.oauth2.service_account import Credentials
 from datetime import datetime
-from PIL import Image
 
-# -------------------------------
+# ---------------------------
 # CONFIG
-# -------------------------------
+# ---------------------------
 
-SHEET_URL = "https://docs.google.com/spreadsheets/d/1X67okMAGzu15olxtR8UhRDQam2HmqjWgDsj2fLhhvLc/edit?gid=0#gid=0"
+SHEET_ID = "1X67okMAGzu15olxtR8UhRDQam2HmqjWgDsj2fLhhvLc"   # Only the ID
 
 scope = [
     "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/drive"
 ]
 
-creds = Credentials.from_service_account_file(
-    "credentials.json",
-    scopes=scope
-)
+# ---------------------------
+# GOOGLE AUTH (LOCAL + CLOUD)
+# ---------------------------
+
+try:
+    creds = Credentials.from_service_account_info(
+        st.secrets["gcp_service_account"],
+        scopes=scope
+    )
+except Exception:
+    creds = Credentials.from_service_account_file(
+        "credentials.json",
+        scopes=scope
+    )
 
 client = gspread.authorize(creds)
-sheet = client.open_by_url(SHEET_URL).sheet1
+sheet = client.open_by_key(SHEET_ID).sheet1
 
 
-# -------------------------------
-# FETCH BOOK
-# -------------------------------
+# ---------------------------
+# GOOGLE BOOKS FETCH
+# ---------------------------
 
 def fetch_book(isbn):
     url = f"https://www.googleapis.com/books/v1/volumes?q=isbn:{isbn}"
@@ -51,9 +58,9 @@ def fetch_book(isbn):
     }
 
 
-# -------------------------------
-# CHECK DUPLICATE
-# -------------------------------
+# ---------------------------
+# DUPLICATE CHECK
+# ---------------------------
 
 def isbn_exists(isbn):
     records = sheet.get_all_records()
@@ -63,65 +70,88 @@ def isbn_exists(isbn):
     return False
 
 
-# -------------------------------
+# ---------------------------
 # UI
-# -------------------------------
+# ---------------------------
 
-st.title("📚 Mobile ISBN Scanner Library")
+st.set_page_config(page_title="ISBN Scanner Library")
 
-image = st.camera_input("Scan Book Barcode")
+st.title("📚 My ISBN Library")
 
-if image is not None:
-    img = Image.open(image)
-    img_np = np.array(img)
+st.markdown("### 📷 Scan Book Barcode")
 
-    barcodes = decode(img_np)
+# HTML5 Barcode Scanner
+html_code = """
+<div id="reader" style="width:300px;"></div>
 
-    if barcodes:
-        isbn = barcodes[0].data.decode("utf-8")
-        st.success(f"Detected ISBN: {isbn}")
+<script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
 
-        if isbn_exists(isbn):
-            st.warning("⚠ Book already exists.")
-        else:
-            book = fetch_book(isbn)
+<script>
+function onScanSuccess(decodedText, decodedResult) {
+    const input = window.parent.document.querySelector('input[type="text"]');
+    if (input) {
+        input.value = decodedText;
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+}
 
-            if book:
-                sheet.append_row([
-                    datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                    isbn,
-                    book["title"],
-                    book["authors"],
-                    book["publisher"],
-                    book["published_date"],
-                    "Not Started",
-                    "",
-                    ""
-                ])
+var html5QrcodeScanner = new Html5QrcodeScanner(
+    "reader",
+    { fps: 10, qrbox: 250 }
+);
 
-                st.success("✅ Book added!")
+html5QrcodeScanner.render(onScanSuccess);
+</script>
+"""
 
-                if book["thumbnail"]:
-                    st.image(book["thumbnail"], width=150)
+components.html(html_code, height=400)
 
-                st.write("**Title:**", book["title"])
-                st.write("**Authors:**", book["authors"])
-                st.write("**Publisher:**", book["publisher"])
-                st.write("**Published:**", book["published_date"])
-            else:
-                st.error("Book not found in Google Books.")
+isbn_input = st.text_input("Scanned ISBN will appear here")
+
+if isbn_input:
+
+    isbn = isbn_input.strip()
+
+    if isbn_exists(isbn):
+        st.warning("⚠ Book already exists.")
     else:
-        st.error("No barcode detected. Try again.")
+        book = fetch_book(isbn)
+
+        if book:
+            sheet.append_row([
+                datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                isbn,
+                book["title"],
+                book["authors"],
+                book["publisher"],
+                book["published_date"],
+                "Not Started",
+                "",
+                ""
+            ])
+
+            st.success("✅ Book added!")
+
+            if book["thumbnail"]:
+                st.image(book["thumbnail"], width=150)
+
+            st.write("**Title:**", book["title"])
+            st.write("**Authors:**", book["authors"])
+            st.write("**Publisher:**", book["publisher"])
+            st.write("**Published:**", book["published_date"])
+        else:
+            st.error("Book not found in Google Books.")
 
 
-# -------------------------------
-# SHOW LIBRARY
-# -------------------------------
+# ---------------------------
+# LIBRARY VIEW
+# ---------------------------
 
-st.subheader("📖 My Library")
+st.markdown("## 📖 Library")
+
 records = sheet.get_all_records()
 
 if records:
-    st.dataframe(records)
+    st.dataframe(records, use_container_width=True)
 else:
-    st.info("Library empty.")
+    st.info("No books added yet.")
