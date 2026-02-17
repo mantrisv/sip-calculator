@@ -124,4 +124,6 @@ if isbn_input and isbn_input != st.session_state.last_processed_isbn:
                 book["publisher"],
                 book["published_date"],
                 "Not Started",
-                ""
+                "",
+		""
+])
