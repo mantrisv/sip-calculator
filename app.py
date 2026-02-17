@@ -30,7 +30,7 @@ sheet = client.open_by_key(SHEET_ID).sheet1
 
 
 # -----------------------------
-# FETCH BOOK DATA
+# FUNCTIONS
 # -----------------------------
 
 def fetch_book(isbn):
@@ -125,5 +125,35 @@ if isbn_input and isbn_input != st.session_state.last_processed_isbn:
                 book["published_date"],
                 "Not Started",
                 "",
-		""
-])
+                ""
+            ])
+
+            st.success("✅ Book added successfully!")
+
+            if book["thumbnail"]:
+                st.image(book["thumbnail"], width=150)
+
+            st.write("**Title:**", book["title"])
+            st.write("**Authors:**", book["authors"])
+            st.write("**Publisher:**", book["publisher"])
+            st.write("**Published:**", book["published_date"])
+
+            st.session_state.last_processed_isbn = isbn
+
+        else:
+            st.error("Book not found in Google Books.")
+            st.session_state.last_processed_isbn = isbn
+
+
+# -----------------------------
+# LIBRARY VIEW
+# -----------------------------
+
+st.markdown("## 📖 Library")
+
+records = sheet.get_all_records()
+
+if records:
+    st.dataframe(records, use_container_width=True)
+else:
+    st.info("No books added yet.")
