@@ -97,46 +97,41 @@ components.html(html_code, height=400)
 
 isbn_input = st.text_input("Scanned ISBN will appear here")
 
-if isbn_input:
+isbn_input = st.text_input("Scanned ISBN will appear here")
 
-    isbn = isbn_input.strip()
+if st.button("➕ Add Book"):
+    if isbn_input:
 
-    if isbn_exists(isbn):
-        st.warning("⚠ Book already exists.")
-    else:
-        book = fetch_book(isbn)
+        isbn = isbn_input.strip()
 
-        if book:
-            sheet.append_row([
-                datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                isbn,
-                book["title"],
-                book["authors"],
-                book["publisher"],
-                book["published_date"],
-                "Not Started",
-                "",
-                ""
-            ])
-
-            st.success("✅ Book added!")
-
-            if book["thumbnail"]:
-                st.image(book["thumbnail"], width=150)
-
-            st.write("**Title:**", book["title"])
-            st.write("**Authors:**", book["authors"])
-            st.write("**Publisher:**", book["publisher"])
-            st.write("**Published:**", book["published_date"])
+        if isbn_exists(isbn):
+            st.warning("⚠ Book already exists.")
         else:
-            st.error("Book not found in Google Books.")
+            book = fetch_book(isbn)
 
+            if book:
+                sheet.append_row([
+                    datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    isbn,
+                    book["title"],
+                    book["authors"],
+                    book["publisher"],
+                    book["published_date"],
+                    "Not Started",
+                    "",
+                    ""
+                ])
 
-st.markdown("## 📖 Library")
+                st.success("✅ Book added!")
 
-records = sheet.get_all_records()
+                if book["thumbnail"]:
+                    st.image(book["thumbnail"], width=150)
 
-if records:
-    st.dataframe(records, use_container_width=True)
-else:
-    st.info("No books added yet.")
+                st.write("**Title:**", book["title"])
+                st.write("**Authors:**", book["authors"])
+                st.write("**Publisher:**", book["publisher"])
+                st.write("**Published:**", book["published_date"])
+            else:
+                st.error("Book not found in Google Books.")
+    else:
+        st.warning("Scan or enter ISBN first.")
