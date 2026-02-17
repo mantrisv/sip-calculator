@@ -46,8 +46,7 @@ def fetch_book(isbn):
         "title": volume.get("title", ""),
         "authors": ", ".join(volume.get("authors", [])),
         "publisher": volume.get("publisher", ""),
-        "published_date": volume.get("publishedDate", ""),
-        "thumbnail": volume.get("imageLinks", {}).get("thumbnail", "")
+        "published_date": volume.get("publishedDate", "")
     }
 
 
@@ -67,11 +66,7 @@ st.set_page_config(page_title="My ISBN Library")
 st.title("📚 My ISBN Library")
 st.markdown("### 📷 Scan Book Barcode")
 
-# Initialize session state
-if "isbn_input" not in st.session_state:
-    st.session_state.isbn_input = ""
-
-# Scanner
+# Scanner that updates query params
 html_code = """
 <div id="reader" style="width:300px;"></div>
 
@@ -79,11 +74,9 @@ html_code = """
 
 <script>
 function onScanSuccess(decodedText) {
-    const input = window.parent.document.querySelector('input[type="text"]');
-    if (input) {
-        input.value = decodedText;
-        input.dispatchEvent(new Event('input', { bubbles: true }));
-    }
+    const url = new URL(window.location);
+    url.searchParams.set("isbn", decodedText);
+    window.location.href = url.toString();
 }
 
 var scanner = new Html5QrcodeScanner(
@@ -97,22 +90,21 @@ scanner.render(onScanSuccess);
 
 components.html(html_code, height=400)
 
-# Text Input (bound to session_state)
-isbn_input = st.text_input(
-    "Scanned ISBN will appear here",
-    key="isbn_input"
-)
+# Read ISBN from query params
+query_params = st.query_params
+isbn_input = query_params.get("isbn", "")
+
+isbn = st.text_input("Scanned ISBN will appear here", value=isbn_input)
 
 # -----------------------------
-# ADD BOOK LOGIC
+# ADD BOOK
 # -----------------------------
 
 if st.button("➕ Add Book"):
 
-    if not st.session_state.isbn_input:
+    if not isbn:
         st.warning("Scan or enter ISBN first.")
     else:
-        isbn = st.session_state.isbn_input.strip()
 
         if isbn_exists(isbn):
             st.warning("⚠ Book already exists.")
@@ -134,15 +126,15 @@ if st.button("➕ Add Book"):
 
                 st.success("✅ Book added successfully!")
 
-                # Clear input after success
-                st.session_state.isbn_input = ""
+                # Clear URL param after success
+                st.query_params.clear()
 
             else:
                 st.error("Book not found in Google Books.")
 
 
 # -----------------------------
-# LIBRARY VIEW
+# LIBRARY
 # -----------------------------
 
 st.markdown("## 📖 Library")
