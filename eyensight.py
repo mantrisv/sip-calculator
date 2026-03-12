@@ -1,46 +1,40 @@
 import streamlit as st
 import yfinance as yf
-from newsapi import NewsApiClient
+import pandas as pd
 import google.generativeai as genai
-from datetime import datetime, timedelta
+import matplotlib.pyplot as plt
+from newsapi import NewsApiClient
 
-# -----------------------------
-# API KEYS
-# -----------------------------
-
-NEWS_API_KEY = "fc7c24a7e555442cb54c67dbf1f403da"
-GEMINI_API_KEY = "AIzaSyAP2_ayCFgZfhWVkMlJOxn9BcEuv-0PqSI"
-
-newsapi = NewsApiClient(api_key=NEWS_API_KEY)
-
-genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-model = genai.GenerativeModel("gemini-2.5-flash")
-
-
-# -----------------------------
-# STREAMLIT UI
-# -----------------------------
+st.set_page_config(page_title="AI Stock Analyzer", layout="wide")
 
 st.title("📊 AI Stock Analyzer")
 
-symbol = st.text_input(
-    "Enter Stock Symbol",
-    placeholder="Example: AAPL or RELIANCE.NS"
-)
+# ---------------- GEMINI CONFIG ----------------
+genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+model = genai.GenerativeModel("gemini-2.5-flash")
 
+# ---------------- NEWS API ----------------
+newsapi = NewsApiClient(api_key=st.secrets["NEWS_API_KEY"])
 
-# -----------------------------
-# STOCK DATA
-# -----------------------------
-
+# ---------------- GET STOCK DATA ----------------
+@st.cache_data(ttl=600)
 def get_stock_data(symbol):
 
     ticker = yf.Ticker(symbol)
 
     hist = ticker.history(period="1y")
 
-    if hist.empty:
-        return None, None, None
+    hist["50DMA"] = hist["Close"].rolling(50).mean()
+    hist["200DMA"] = hist["Close"].rolling(200).mean()
+
+    tech = {
+        "Current Price": round(hist["Close"].iloc[-1],2),
+        "50DMA": round(hist["50DMA"].iloc[-1],2),
+        "200DMA": round(hist["200DMA"].iloc[-1],2),
+        "52W High": round(hist["High"].max(),2),
+        "52W Low": round(hist["Low"].min(),2),
+        "Volume": int(hist["Volume"].iloc[-1])
+    }
 
     info = ticker.info
 
@@ -54,175 +48,149 @@ def get_stock_data(symbol):
         "Beta": info.get("beta")
     }
 
-    technical = {
-        "Current Price": round(hist["Close"].iloc[-1],2),
-        "50DMA": round(hist["Close"].rolling(50).mean().iloc[-1],2),
-        "200DMA": round(hist["Close"].rolling(200).mean().iloc[-1],2),
-        "52W High": round(hist["High"].max(),2),
-        "52W Low": round(hist["Low"].min(),2),
-        "Volume": int(hist["Volume"].iloc[-1])
-    }
-
-    financials = ticker.financials
-    balance = ticker.balance_sheet
-    cashflow = ticker.cashflow
-
     statements = {
-        "Income Statement": financials.head().to_string(),
-        "Balance Sheet": balance.head().to_string(),
-        "Cashflow": cashflow.head().to_string()
+        "Income Statement": ticker.financials,
+        "Balance Sheet": ticker.balance_sheet,
+        "Cashflow": ticker.cashflow
     }
 
-    return technical, fundamentals, statements, hist
+    return tech, fundamentals, statements, hist
 
-
-# -----------------------------
-# NEWS
-# -----------------------------
-
-def get_stock_news(company):
+# ---------------- NEWS FETCH ----------------
+@st.cache_data(ttl=1800)
+def get_news(symbol):
 
     try:
-
-        query = company.replace(".NS","")
-
-        from_date = (datetime.now() - timedelta(days=7)).strftime("%Y-%m-%d")
-
-        news = newsapi.get_everything(
-            q=query,
-            from_param=from_date,
+        articles = newsapi.get_everything(
+            q=symbol,
             language="en",
-            sort_by="relevancy",
+            sort_by="publishedAt",
             page_size=5
         )
 
-        articles = news["articles"]
+        news = []
 
-        news_text = ""
+        for article in articles["articles"]:
+            news.append(article["title"])
 
-        for a in articles:
-            news_text += f"{a['title']} - {a.get('description','')}\n"
-
-        return articles, news_text
+        return news
 
     except:
-        return [], ""
+        return []
 
-
-# -----------------------------
-# GEMINI ANALYSIS
-# -----------------------------
-
-def generate_analysis(symbol, tech, fundamentals, statements, news):
+# ---------------- AI ANALYSIS ----------------
+def generate_analysis(symbol, tech, fundamentals, statements, news_text):
 
     prompt = f"""
-You are a professional equity research analyst.
+    You are an equity research analyst.
 
-Company: {symbol}
+    Generate a structured research report for {symbol}.
 
-Technical Data:
-{tech}
+    Technical Data:
+    {tech}
 
-Fundamental Metrics:
-{fundamentals}
+    Fundamental Data:
+    {fundamentals}
 
-Financial Statements:
-{statements}
+    Financial Statements:
+    {statements}
 
-Recent News:
-{news}
+    News:
+    {news_text}
 
-Provide analysis covering:
+    Format:
+    1. Technical Outlook
+    2. Fundamental View
+    3. News Sentiment
+    4. Key Risks
+    5. Investment Recommendation
+    """
 
-1 Technical Outlook
-2 Fundamental View
-3 News Sentiment
-4 Key Risks
-5 Investment Recommendation
-"""
+    try:
 
-    response = model.generate_content(prompt)
+        response = model.generate_content(prompt)
 
-    return response.text
+        return response.text
 
+    except Exception as e:
 
-# -----------------------------
-# MAIN BUTTON
-# -----------------------------
+        return f"AI generation failed: {e}"
 
-if st.button("Analyze"):
+# ---------------- USER INPUT ----------------
+symbol = st.text_input("Enter Stock Symbol", "RELIANCE.NS")
 
-    if symbol:
+if symbol:
 
-        st.write("Fetching stock data...")
+    st.write("Fetching stock data...")
+
+    try:
 
         tech, fundamentals, statements, hist = get_stock_data(symbol)
 
-        if tech is None:
-            st.error("Invalid ticker symbol")
-            st.stop()
+        col1, col2 = st.columns(2)
 
-        # -----------------
-        # TECHNICAL DATA
-        # -----------------
+        with col1:
+            st.subheader("Technical Data")
+            st.json(tech)
 
-        st.subheader("Technical Data")
+        with col2:
+            st.subheader("Fundamental Metrics")
+            st.json(fundamentals)
 
-        st.json(tech)
+        # ---------------- CHART ----------------
+        st.subheader("Price Chart")
 
-        st.line_chart(hist["Close"])
+        fig, ax = plt.subplots()
 
-        # -----------------
-        # FUNDAMENTALS
-        # -----------------
+        ax.plot(hist.index, hist["Close"], label="Close")
+        ax.plot(hist.index, hist["50DMA"], label="50DMA")
+        ax.plot(hist.index, hist["200DMA"], label="200DMA")
 
-        st.subheader("Fundamental Metrics")
+        ax.legend()
 
-        st.json(fundamentals)
+        st.pyplot(fig)
 
-        # -----------------
-        # FINANCIAL STATEMENTS
-        # -----------------
-
+        # ---------------- FINANCIALS ----------------
         st.subheader("Financial Statements")
 
-        st.text("Income Statement")
-        st.text(statements["Income Statement"])
+        for name, df in statements.items():
 
-        st.text("Balance Sheet")
-        st.text(statements["Balance Sheet"])
+            st.write(name)
 
-        st.text("Cashflow")
-        st.text(statements["Cashflow"])
+            if df is not None and not df.empty:
 
-        # -----------------
-        # NEWS
-        # -----------------
+                st.dataframe(df)
 
+            else:
+
+                st.write("No data available")
+
+        # ---------------- NEWS ----------------
         st.write("Fetching news...")
 
-        articles, news_text = get_stock_news(symbol)
+        news = get_news(symbol)
 
         st.subheader("Latest News")
 
-        if articles:
+        if news:
 
-            for a in articles:
-                st.markdown(f"### {a['title']}")
-                st.write(a.get("description",""))
-                st.write(a["url"])
+            for n in news:
+
+                st.write("•", n)
 
         else:
+
             st.write("No recent news found")
 
-        # -----------------
-        # GEMINI
-        # -----------------
+        news_text = " ".join(news)
 
+        # ---------------- AI ANALYSIS ----------------
         st.write("Generating AI analysis...")
 
         analysis = generate_analysis(symbol, tech, fundamentals, statements, news_text)
 
-        st.subheader("AI Analysis")
+        st.markdown(analysis)
 
-        st.write(analysis)
+    except Exception as e:
+
+        st.error(f"Error fetching data: {e}")
