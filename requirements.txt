@@ -9,4 +9,5 @@ streamlit-webrtc
 opencv-python-headless
 pyzbar
 av
+yfinance
 
