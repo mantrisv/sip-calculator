@@ -13,7 +13,7 @@ GEMINI_API_KEY = "AIzaSyAP2_ayCFgZfhWVkMlJOxn9BcEuv-0PqSI"
 
 newsapi = NewsApiClient(api_key=NEWS_API_KEY)
 
-genai.configure(api_key=GEMINI_API_KEY)
+genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
 model = genai.GenerativeModel("gemini-2.5-flash")
 
 
