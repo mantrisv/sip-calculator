@@ -11,4 +11,5 @@ pyzbar
 av
 yfinance
 newsapi-python
+google-generativeai
 
