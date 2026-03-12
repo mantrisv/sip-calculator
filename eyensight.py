@@ -119,7 +119,7 @@ def generate_analysis(symbol, tech, fundamentals, statements, news_text):
 # ---------------- USER INPUT ----------------
 symbol = st.text_input("Enter Stock Symbol", "RELIANCE.NS")
 
-if symbol:
+if st.button("Analyze Stock"):
 
     st.write("Fetching stock data...")
 
