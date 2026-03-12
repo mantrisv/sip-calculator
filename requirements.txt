@@ -10,4 +10,5 @@ opencv-python-headless
 pyzbar
 av
 yfinance
+newsapi-python
 
