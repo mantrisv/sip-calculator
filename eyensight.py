@@ -23,12 +23,15 @@ newsapi = NewsApiClient(api_key=st.secrets["NEWS_API_KEY"])
 @st.cache_data(ttl=600)
 def get_stock_data(symbol):
 
-    url = f"https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol={symbol}&apikey={ALPHA_KEY}"
+    url = (
+        f"https://www.alphavantage.co/query?"
+        f"function=TIME_SERIES_DAILY&symbol={symbol}&apikey={ALPHA_KEY}"
+    )
 
     response = requests.get(url).json()
 
     if "Time Series (Daily)" not in response:
-        raise Exception("AlphaVantage Price Error")
+        raise Exception("Price Data Not Available")
 
     ts = response["Time Series (Daily)"]
 
@@ -54,7 +57,8 @@ def get_stock_data(symbol):
     tech = {
         "Current Price": round(df["Close"].iloc[-1], 2),
         "50 DMA": round(df["50DMA"].iloc[-1], 2),
-        "200 DMA": round(df["200DMA"].iloc[-1], 2) if not pd.isna(df["200DMA"].iloc[-1]) else "N/A",
+        "200 DMA": round(df["200DMA"].iloc[-1], 2)
+        if not pd.isna(df["200DMA"].iloc[-1]) else "N/A",
         "52W High": round(df["High"].max(), 2),
         "52W Low": round(df["Low"].min(), 2),
         "Volume": int(df["Volume"].iloc[-1])
@@ -63,7 +67,7 @@ def get_stock_data(symbol):
     return tech, df
 
 
-# ---------------- SCREENER SCRAPER ----------------
+# ---------------- FUNDAMENTAL DATA ----------------
 @st.cache_data(ttl=1800)
 def get_screener_fundamentals(company_code):
 
@@ -79,30 +83,36 @@ def get_screener_fundamentals(company_code):
 
     fundamentals = {}
 
-    ratios = soup.find_all("li", class_="four columns")
+    ratio_section = soup.find("ul", id="top-ratios")
 
-    for ratio in ratios:
+    if ratio_section:
 
-        try:
-            name = ratio.find("span", class_="name").text.strip()
-            value = ratio.find("span", class_="number").text.strip()
+        ratios = ratio_section.find_all("li")
 
-            fundamentals[name] = value
+        for ratio in ratios:
 
-        except:
-            continue
+            try:
+
+                name = ratio.find("span", class_="name").text.strip()
+
+                value = ratio.find("span", class_="number").text.strip()
+
+                fundamentals[name] = value
+
+            except:
+                continue
 
     return fundamentals
 
 
 # ---------------- NEWS ----------------
 @st.cache_data(ttl=1800)
-def get_news(company):
+def get_news(company_name):
 
     try:
 
         articles = newsapi.get_everything(
-            q=company,
+            q=company_name,
             language="en",
             sort_by="publishedAt",
             page_size=5
@@ -111,6 +121,7 @@ def get_news(company):
         return [x["title"] for x in articles["articles"]]
 
     except:
+
         return []
 
 
@@ -118,60 +129,82 @@ def get_news(company):
 def generate_analysis(symbol, tech, fundamentals, news):
 
     prompt = f"""
-    Analyze stock {symbol}
+    You are a professional equity analyst.
 
-    Technical:
+    Analyze this stock:
+
+    Stock Name: {symbol}
+
+    Technical Data:
     {tech}
 
-    Fundamentals:
+    Fundamental Data:
     {fundamentals}
 
     News:
     {news}
 
-    Give:
+    Format:
     1. Technical Outlook
     2. Fundamental View
-    3. Risks
+    3. Key Risks
     4. Investment Recommendation
     """
 
-    response = model.generate_content(prompt)
+    try:
 
-    return response.text
+        response = model.generate_content(prompt)
+
+        return response.text
+
+    except Exception as e:
+
+        return str(e)
 
 
-# ---------------- UI ----------------
-symbol = st.text_input("Alpha Symbol", "RELIANCE.BSE")
+# ---------------- USER INPUT ----------------
+symbol = st.text_input(
+    "Enter AlphaVantage Symbol (e.g. RELIANCE.BSE)",
+    "RELIANCE.BSE"
+)
 
-company_code = st.text_input("Screener Code", "RELIANCE")
+company_code = st.text_input(
+    "Enter Screener Code (e.g. RELIANCE)",
+    "RELIANCE"
+)
 
 
+# ---------------- MAIN BUTTON ----------------
 if st.button("Analyze Stock"):
 
     try:
 
-        st.write("Fetching Technicals...")
+        st.write("Fetching Technical Data...")
 
         tech, df = get_stock_data(symbol)
 
-        st.write("Fetching Fundamentals...")
+        st.write("Fetching Fundamental Data...")
 
         fundamentals = get_screener_fundamentals(company_code)
 
         col1, col2 = st.columns(2)
 
         with col1:
+
             st.subheader("Technical Data")
+
             st.json(tech)
 
         with col2:
+
             st.subheader("Fundamental Data")
+
             st.json(fundamentals)
 
+        # ---------------- CHART ----------------
         st.subheader("Price Chart")
 
-        fig, ax = plt.subplots()
+        fig, ax = plt.subplots(figsize=(10, 5))
 
         ax.plot(df.index, df["Close"], label="Close")
         ax.plot(df.index, df["50DMA"], label="50 DMA")
@@ -181,14 +214,25 @@ if st.button("Analyze Stock"):
 
         st.pyplot(fig)
 
+        # ---------------- NEWS ----------------
         st.write("Fetching News...")
 
         news = get_news(company_code)
 
-        for n in news:
-            st.write("•", n)
+        st.subheader("Latest News")
 
-        st.write("Generating AI Report...")
+        if news:
+
+            for n in news:
+
+                st.write("•", n)
+
+        else:
+
+            st.write("No News Found")
+
+        # ---------------- AI REPORT ----------------
+        st.write("Generating AI Analysis...")
 
         analysis = generate_analysis(
             company_code,
@@ -196,6 +240,8 @@ if st.button("Analyze Stock"):
             fundamentals,
             news
         )
+
+        st.subheader("AI Research Report")
 
         st.markdown(analysis)
 
