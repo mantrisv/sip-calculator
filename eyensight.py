@@ -4,15 +4,14 @@ import pandas as pd
 import google.generativeai as genai
 import matplotlib.pyplot as plt
 from newsapi import NewsApiClient
+from bs4 import BeautifulSoup
 
-# ---------------- PAGE CONFIG ----------------
+# ---------------- CONFIG ----------------
 st.set_page_config(page_title="AI Stock Analyzer", layout="wide")
 
 st.title("📊 AI Stock Analyzer")
 
-# ---------------- API CONFIG ----------------
 ALPHA_KEY = st.secrets["ALPHA_VANTAGE_KEY"]
-APIFY_TOKEN = st.secrets["APIFY_TOKEN"]
 
 genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
 model = genai.GenerativeModel("gemini-2.5-flash")
@@ -20,19 +19,16 @@ model = genai.GenerativeModel("gemini-2.5-flash")
 newsapi = NewsApiClient(api_key=st.secrets["NEWS_API_KEY"])
 
 
-# ---------------- PRICE DATA ----------------
+# ---------------- TECHNICAL DATA ----------------
 @st.cache_data(ttl=600)
 def get_stock_data(symbol):
 
-    url = (
-        f"https://www.alphavantage.co/query?"
-        f"function=TIME_SERIES_DAILY&symbol={symbol}&apikey={ALPHA_KEY}"
-    )
+    url = f"https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol={symbol}&apikey={ALPHA_KEY}"
 
     response = requests.get(url).json()
 
     if "Time Series (Daily)" not in response:
-        raise Exception("Price data unavailable / API limit reached")
+        raise Exception("AlphaVantage Price Error")
 
     ts = response["Time Series (Daily)"]
 
@@ -67,55 +63,46 @@ def get_stock_data(symbol):
     return tech, df
 
 
-# ---------------- FUNDAMENTALS ----------------
+# ---------------- SCREENER SCRAPER ----------------
 @st.cache_data(ttl=1800)
 def get_screener_fundamentals(company_code):
 
-    url = "https://api.apify.com/v2/acts/shashwattrivedi~screener-in/run-sync-get-dataset-items"
+    url = f"https://www.screener.in/company/{company_code}/consolidated/"
 
-    params = {
-        "token": APIFY_TOKEN
+    headers = {
+        "User-Agent": "Mozilla/5.0"
     }
 
-    payload = {
-        "crawlerMode": "getstockdetails",
-        "companyPageUrl": f"https://www.screener.in/company/{company_code}/consolidated/",
-        "screenQuery": ""
-    }
+    response = requests.get(url, headers=headers)
 
-    response = requests.post(
-        url,
-        params=params,
-        json=payload
-    )
+    soup = BeautifulSoup(response.text, "html.parser")
 
-    data = response.json()
+    fundamentals = {}
 
-    if not data:
-        raise Exception("No fundamental data found")
+    ratios = soup.find_all("li", class_="four columns")
 
-    company = data[0]
+    for ratio in ratios:
 
-    fundamentals = {
-        "Company": company.get("company_name", "N/A"),
-        "Pros": company.get("pros", []),
-        "Cons": company.get("cons", []),
-        "Sales Growth": company.get("compound_sales_growth", {}),
-        "Profit Growth": company.get("compound_profit_growth", {}),
-        "Stock Price CAGR": company.get("stock_price_cagr", {})
-    }
+        try:
+            name = ratio.find("span", class_="name").text.strip()
+            value = ratio.find("span", class_="number").text.strip()
+
+            fundamentals[name] = value
+
+        except:
+            continue
 
     return fundamentals
 
 
 # ---------------- NEWS ----------------
 @st.cache_data(ttl=1800)
-def get_news(company_name):
+def get_news(company):
 
     try:
 
         articles = newsapi.get_everything(
-            q=company_name,
+            q=company,
             language="en",
             sort_by="publishedAt",
             page_size=5
@@ -124,7 +111,6 @@ def get_news(company_name):
         return [x["title"] for x in articles["articles"]]
 
     except:
-
         return []
 
 
@@ -132,81 +118,60 @@ def get_news(company_name):
 def generate_analysis(symbol, tech, fundamentals, news):
 
     prompt = f"""
-    You are a professional equity research analyst.
+    Analyze stock {symbol}
 
-    Analyze the stock below:
-
-    Stock: {symbol}
-
-    Technical Data:
+    Technical:
     {tech}
 
-    Fundamental Data:
+    Fundamentals:
     {fundamentals}
 
     News:
     {news}
 
-    Give structured report:
+    Give:
     1. Technical Outlook
-    2. Fundamental Strengths
+    2. Fundamental View
     3. Risks
     4. Investment Recommendation
     """
 
-    try:
+    response = model.generate_content(prompt)
 
-        response = model.generate_content(prompt)
-
-        return response.text
-
-    except Exception as e:
-
-        return str(e)
+    return response.text
 
 
 # ---------------- UI ----------------
-symbol = st.text_input(
-    "Enter AlphaVantage Symbol (e.g. RELIANCE.BSE)",
-    "RELIANCE.BSE"
-)
+symbol = st.text_input("Alpha Symbol", "RELIANCE.BSE")
 
-company_code = st.text_input(
-    "Enter Screener Code (e.g. RELIANCE)",
-    "RELIANCE"
-)
+company_code = st.text_input("Screener Code", "RELIANCE")
 
 
 if st.button("Analyze Stock"):
 
     try:
 
-        st.write("Fetching Price Data...")
+        st.write("Fetching Technicals...")
 
         tech, df = get_stock_data(symbol)
 
-        st.write("Fetching Fundamental Data...")
+        st.write("Fetching Fundamentals...")
 
         fundamentals = get_screener_fundamentals(company_code)
 
         col1, col2 = st.columns(2)
 
         with col1:
-
             st.subheader("Technical Data")
-
             st.json(tech)
 
         with col2:
-
             st.subheader("Fundamental Data")
-
             st.json(fundamentals)
 
-        # ---------------- CHART ----------------
         st.subheader("Price Chart")
 
-        fig, ax = plt.subplots(figsize=(10, 5))
+        fig, ax = plt.subplots()
 
         ax.plot(df.index, df["Close"], label="Close")
         ax.plot(df.index, df["50DMA"], label="50 DMA")
@@ -216,25 +181,14 @@ if st.button("Analyze Stock"):
 
         st.pyplot(fig)
 
-        # ---------------- NEWS ----------------
         st.write("Fetching News...")
 
         news = get_news(company_code)
 
-        st.subheader("Latest News")
+        for n in news:
+            st.write("•", n)
 
-        if news:
-
-            for n in news:
-
-                st.write("•", n)
-
-        else:
-
-            st.write("No news found.")
-
-        # ---------------- AI ANALYSIS ----------------
-        st.write("Generating AI Analysis...")
+        st.write("Generating AI Report...")
 
         analysis = generate_analysis(
             company_code,
@@ -243,10 +197,8 @@ if st.button("Analyze Stock"):
             news
         )
 
-        st.subheader("AI Research Report")
-
         st.markdown(analysis)
 
     except Exception as e:
 
-        st.error(f"Error: {e}")
+        st.error(str(e))
