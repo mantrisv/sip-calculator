@@ -19,22 +19,24 @@ model = genai.GenerativeModel("gemini-2.5-flash")
 newsapi = NewsApiClient(api_key=st.secrets["NEWS_API_KEY"])
 
 
-# ---------------- TWELVE DATA PRICE FETCH ----------------
+# ---------------- PRICE FETCH ----------------
 @st.cache_data(ttl=600)
 def get_stock_data(symbol):
 
-    exchanges = ["NSE", "BSE"]
+    tickers = [
+        f"{symbol}:NSE",
+        f"{symbol}:BSE"
+    ]
 
     data = None
 
-    for exchange in exchanges:
+    for ticker in tickers:
 
         url = (
             f"https://api.twelvedata.com/time_series?"
-            f"symbol={symbol}"
+            f"symbol={ticker}"
             f"&interval=1day"
             f"&outputsize=250"
-            f"&exchange={exchange}"
             f"&apikey={TWELVE_KEY}"
         )
 
@@ -79,17 +81,16 @@ def get_stock_data(symbol):
     return tech, df
 
 
-# ---------------- SCREENER FUNDAMENTALS ----------------
+# ---------------- FUNDAMENTALS ----------------
 @st.cache_data(ttl=1800)
 def get_screener_fundamentals(symbol):
 
     url = f"https://www.screener.in/company/{symbol}/consolidated/"
 
-    headers = {
-        "User-Agent": "Mozilla/5.0"
-    }
-
-    response = requests.get(url, headers=headers)
+    response = requests.get(
+        url,
+        headers={"User-Agent": "Mozilla/5.0"}
+    )
 
     soup = BeautifulSoup(response.text, "html.parser")
 
@@ -99,9 +100,7 @@ def get_screener_fundamentals(symbol):
 
     if ratio_section:
 
-        ratios = ratio_section.find_all("li")
-
-        for ratio in ratios:
+        for ratio in ratio_section.find_all("li"):
 
             try:
 
@@ -137,13 +136,11 @@ def get_news(symbol):
         return []
 
 
-# ---------------- AI ANALYSIS ----------------
+# ---------------- AI ----------------
 def generate_analysis(symbol, tech, fundamentals, news):
 
     prompt = f"""
-    You are a professional equity analyst.
-
-    Analyze stock: {symbol}
+    Analyze stock {symbol}
 
     Technical Data:
     {tech}
@@ -154,11 +151,11 @@ def generate_analysis(symbol, tech, fundamentals, news):
     News:
     {news}
 
-    Provide:
+    Give:
     1. Technical Outlook
     2. Fundamental Analysis
     3. Risks
-    4. Investment Recommendation
+    4. Recommendation
     """
 
     response = model.generate_content(prompt)
@@ -167,10 +164,7 @@ def generate_analysis(symbol, tech, fundamentals, news):
 
 
 # ---------------- UI ----------------
-symbol = st.text_input(
-    "Enter Stock Symbol",
-    "RELIANCE"
-)
+symbol = st.text_input("Enter Stock Symbol", "RELIANCE")
 
 
 if st.button("Analyze Stock"):
@@ -179,30 +173,25 @@ if st.button("Analyze Stock"):
 
         st.write("Fetching Price Data...")
 
-        tech, df = get_stock_data(symbol)
+        tech, df = get_stock_data(symbol.upper())
 
         st.write("Fetching Fundamentals...")
 
-        fundamentals = get_screener_fundamentals(symbol)
+        fundamentals = get_screener_fundamentals(symbol.upper())
 
         col1, col2 = st.columns(2)
 
         with col1:
-
             st.subheader("Technical Data")
-
             st.json(tech)
 
         with col2:
-
             st.subheader("Fundamental Data")
-
             st.json(fundamentals)
 
-        # ---------------- CHART ----------------
         st.subheader("Price Chart")
 
-        fig, ax = plt.subplots(figsize=(10, 5))
+        fig, ax = plt.subplots()
 
         ax.plot(df["datetime"], df["close"], label="Close")
         ax.plot(df["datetime"], df["50DMA"], label="50 DMA")
@@ -212,25 +201,10 @@ if st.button("Analyze Stock"):
 
         st.pyplot(fig)
 
-        # ---------------- NEWS ----------------
-        st.write("Fetching News...")
-
         news = get_news(symbol)
 
-        st.subheader("Latest News")
-
-        if news:
-
-            for n in news:
-
-                st.write("•", n)
-
-        else:
-
-            st.write("No News Found")
-
-        # ---------------- AI REPORT ----------------
-        st.write("Generating AI Analysis...")
+        for n in news:
+            st.write("•", n)
 
         analysis = generate_analysis(
             symbol,
@@ -238,8 +212,6 @@ if st.button("Analyze Stock"):
             fundamentals,
             news
         )
-
-        st.subheader("AI Research Report")
 
         st.markdown(analysis)
 
