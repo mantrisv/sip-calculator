@@ -1,78 +1,78 @@
 import streamlit as st
-import yfinance as yf
+import requests
 import pandas as pd
 import google.generativeai as genai
 import matplotlib.pyplot as plt
 from newsapi import NewsApiClient
 
-# ---------------- PAGE CONFIG ----------------
+# ---------------- CONFIG ----------------
 st.set_page_config(page_title="AI Stock Analyzer", layout="wide")
 
 st.title("📊 AI Stock Analyzer")
 
-# ---------------- API CONFIG ----------------
+ALPHA_KEY = st.secrets["ALPHA_VANTAGE_KEY"]
+
 genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
 model = genai.GenerativeModel("gemini-2.5-flash")
 
 newsapi = NewsApiClient(api_key=st.secrets["NEWS_API_KEY"])
 
 
-# ---------------- STOCK DATA ----------------
+# ---------------- FETCH STOCK DATA ----------------
 @st.cache_data(ttl=600)
-def get_stock_data(symbol, load_financials=False):
+def get_stock_data(symbol):
 
-    ticker = yf.Ticker(symbol)
+    # DAILY PRICE DATA
+    url = f"https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol={symbol}&apikey={ALPHA_KEY}"
 
-    hist = ticker.history(period="1y")
+    response = requests.get(url).json()
 
-    if hist.empty:
-        raise Exception("No stock data found.")
+    if "Time Series (Daily)" not in response:
+        raise Exception("Invalid Symbol / API Limit Reached")
 
-    hist["50DMA"] = hist["Close"].rolling(50).mean()
-    hist["200DMA"] = hist["Close"].rolling(200).mean()
+    ts = response["Time Series (Daily)"]
 
-    try:
-        info = ticker.fast_info
-    except:
-        info = {}
+    df = pd.DataFrame(ts).T
+    df = df.rename(columns={
+        "1. open": "Open",
+        "2. high": "High",
+        "3. low": "Low",
+        "4. close": "Close",
+        "5. volume": "Volume"
+    })
+
+    df = df.astype(float)
+
+    df.index = pd.to_datetime(df.index)
+
+    df = df.sort_index()
+
+    df["50DMA"] = df["Close"].rolling(50).mean()
+    df["200DMA"] = df["Close"].rolling(200).mean()
 
     tech = {
-        "Current Price": round(hist["Close"].iloc[-1], 2),
-        "50DMA": round(hist["50DMA"].iloc[-1], 2),
-        "200DMA": round(hist["200DMA"].iloc[-1], 2),
-        "52W High": round(hist["High"].max(), 2),
-        "52W Low": round(hist["Low"].min(), 2),
-        "Volume": int(hist["Volume"].iloc[-1])
+        "Current Price": round(df["Close"].iloc[-1], 2),
+        "50DMA": round(df["50DMA"].iloc[-1], 2),
+        "200DMA": round(df["200DMA"].iloc[-1], 2),
+        "52W High": round(df["High"].max(), 2),
+        "52W Low": round(df["Low"].min(), 2),
+        "Volume": int(df["Volume"].iloc[-1])
     }
+
+    # FUNDAMENTALS
+    overview_url = f"https://www.alphavantage.co/query?function=OVERVIEW&symbol={symbol}&apikey={ALPHA_KEY}"
+
+    overview = requests.get(overview_url).json()
 
     fundamentals = {
-        "Market Cap": info.get("market_cap", "N/A"),
-        "PE Ratio": info.get("trailing_pe", "N/A"),
-        "EPS": info.get("eps", "N/A"),
-        "Dividend Yield": info.get("dividend_yield", "N/A"),
-        "Beta": info.get("beta", "N/A")
+        "Market Cap": overview.get("MarketCapitalization", "N/A"),
+        "PE Ratio": overview.get("PERatio", "N/A"),
+        "EPS": overview.get("EPS", "N/A"),
+        "Dividend Yield": overview.get("DividendYield", "N/A"),
+        "Beta": overview.get("Beta", "N/A")
     }
 
-    statements = {}
-
-    if load_financials:
-
-        try:
-            statements["Income Statement"] = ticker.financials
-        except:
-            statements["Income Statement"] = pd.DataFrame()
-
-        try:
-            statements["Balance Sheet"] = ticker.balance_sheet
-        except:
-            statements["Balance Sheet"] = pd.DataFrame()
-
-        try:
-            statements["Cashflow"] = ticker.cashflow
-        except:
-            statements["Cashflow"] = pd.DataFrame()
-
-    return tech, fundamentals, statements, hist
+    return tech, fundamentals, df
 
 
 # ---------------- NEWS ----------------
@@ -87,49 +87,46 @@ def get_news(symbol):
             page_size=5
         )
 
-        return [article["title"] for article in articles["articles"]]
+        return [x["title"] for x in articles["articles"]]
 
     except:
         return []
 
 
-# ---------------- AI ANALYSIS ----------------
-def generate_analysis(symbol, tech, fundamentals, news_text):
+# ---------------- AI REPORT ----------------
+def generate_analysis(symbol, tech, fundamentals, news):
 
     prompt = f"""
-    You are a professional equity research analyst.
+    Analyze stock {symbol}
 
-    Analyze stock: {symbol}
-
-    Technical Metrics:
+    Technicals:
     {tech}
 
-    Fundamental Metrics:
+    Fundamentals:
     {fundamentals}
 
-    Recent News:
-    {news_text}
+    News:
+    {news}
 
-    Format Response As:
+    Give:
     1. Technical Outlook
-    2. Fundamental Analysis
-    3. News Sentiment
-    4. Risks
-    5. Investment Recommendation
+    2. Fundamental View
+    3. Risks
+    4. Investment Recommendation
     """
 
     try:
         response = model.generate_content(prompt)
+
         return response.text
 
     except Exception as e:
-        return f"AI generation failed: {e}"
+
+        return str(e)
 
 
-# ---------------- USER INPUT ----------------
-symbol = st.text_input("Enter Stock Symbol", "RELIANCE.NS")
-
-load_financials = st.checkbox("Load Detailed Financial Statements")
+# ---------------- UI ----------------
+symbol = st.text_input("Enter Stock Symbol", "RELIANCE.BSE")
 
 if st.button("Analyze Stock"):
 
@@ -137,10 +134,7 @@ if st.button("Analyze Stock"):
 
         st.write("Fetching stock data...")
 
-        tech, fundamentals, statements, hist = get_stock_data(
-            symbol,
-            load_financials
-        )
+        tech, fundamentals, df = get_stock_data(symbol)
 
         col1, col2 = st.columns(2)
 
@@ -149,63 +143,31 @@ if st.button("Analyze Stock"):
             st.json(tech)
 
         with col2:
-            st.subheader("Fundamental Metrics")
+            st.subheader("Fundamentals")
             st.json(fundamentals)
 
-        # ---------------- CHART ----------------
         st.subheader("Price Chart")
 
-        fig, ax = plt.subplots(figsize=(10, 5))
+        fig, ax = plt.subplots()
 
-        ax.plot(hist.index, hist["Close"], label="Close")
-        ax.plot(hist.index, hist["50DMA"], label="50DMA")
-        ax.plot(hist.index, hist["200DMA"], label="200DMA")
+        ax.plot(df.index, df["Close"], label="Close")
+        ax.plot(df.index, df["50DMA"], label="50DMA")
+        ax.plot(df.index, df["200DMA"], label="200DMA")
 
         ax.legend()
 
         st.pyplot(fig)
 
-        # ---------------- FINANCIALS ----------------
-        if load_financials:
-
-            st.subheader("Financial Statements")
-
-            for name, df in statements.items():
-
-                st.write(f"### {name}")
-
-                if not df.empty:
-                    st.dataframe(df)
-
-                else:
-                    st.write("No data available")
-
-        # ---------------- NEWS ----------------
-        st.write("Fetching news...")
-
         news = get_news(symbol)
 
         st.subheader("Latest News")
 
-        if news:
+        for n in news:
+            st.write("•", n)
 
-            for n in news:
-                st.write("•", n)
+        st.subheader("AI Analysis")
 
-        else:
-            st.write("No recent news found.")
-
-        news_text = " ".join(news)
-
-        # ---------------- AI ANALYSIS ----------------
-        st.write("Generating AI Analysis...")
-
-        analysis = generate_analysis(
-            symbol,
-            tech,
-            fundamentals,
-            news_text
-        )
+        analysis = generate_analysis(symbol, tech, fundamentals, news)
 
         st.markdown(analysis)
 
