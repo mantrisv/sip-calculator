@@ -5,11 +5,12 @@ import google.generativeai as genai
 import matplotlib.pyplot as plt
 from newsapi import NewsApiClient
 
-# ---------------- CONFIG ----------------
+# ---------------- PAGE CONFIG ----------------
 st.set_page_config(page_title="AI Stock Analyzer", layout="wide")
 
 st.title("📊 AI Stock Analyzer")
 
+# ---------------- API CONFIG ----------------
 ALPHA_KEY = st.secrets["ALPHA_VANTAGE_KEY"]
 APIFY_TOKEN = st.secrets["APIFY_TOKEN"]
 
@@ -19,11 +20,14 @@ model = genai.GenerativeModel("gemini-2.5-flash")
 newsapi = NewsApiClient(api_key=st.secrets["NEWS_API_KEY"])
 
 
-# ---------------- PRICE / TECHNICAL DATA ----------------
+# ---------------- PRICE DATA ----------------
 @st.cache_data(ttl=600)
 def get_stock_data(symbol):
 
-    url = f"https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol={symbol}&apikey={ALPHA_KEY}"
+    url = (
+        f"https://www.alphavantage.co/query?"
+        f"function=TIME_SERIES_DAILY&symbol={symbol}&apikey={ALPHA_KEY}"
+    )
 
     response = requests.get(url).json()
 
@@ -54,7 +58,7 @@ def get_stock_data(symbol):
     tech = {
         "Current Price": round(df["Close"].iloc[-1], 2),
         "50 DMA": round(df["50DMA"].iloc[-1], 2),
-        "200 DMA": round(df["200DMA"].iloc[-1], 2),
+        "200 DMA": round(df["200DMA"].iloc[-1], 2) if not pd.isna(df["200DMA"].iloc[-1]) else "N/A",
         "52W High": round(df["High"].max(), 2),
         "52W Low": round(df["Low"].min(), 2),
         "Volume": int(df["Volume"].iloc[-1])
@@ -63,9 +67,9 @@ def get_stock_data(symbol):
     return tech, df
 
 
-# ---------------- SCREENER FUNDAMENTALS ----------------
+# ---------------- FUNDAMENTALS ----------------
 @st.cache_data(ttl=1800)
-def get_screener_fundamentals(company_name):
+def get_screener_fundamentals(company_code):
 
     url = "https://api.apify.com/v2/acts/shashwattrivedi~screener-in/run-sync-get-dataset-items"
 
@@ -74,7 +78,9 @@ def get_screener_fundamentals(company_name):
     }
 
     payload = {
-        "queries": [company_name]
+        "crawlerMode": "getstockdetails",
+        "companyPageUrl": f"https://www.screener.in/company/{company_code}/consolidated/",
+        "screenQuery": ""
     }
 
     response = requests.post(
@@ -86,7 +92,7 @@ def get_screener_fundamentals(company_name):
     data = response.json()
 
     if not data:
-        return {}
+        raise Exception("No fundamental data found")
 
     company = data[0]
 
@@ -104,11 +110,12 @@ def get_screener_fundamentals(company_name):
 
 # ---------------- NEWS ----------------
 @st.cache_data(ttl=1800)
-def get_news(symbol):
+def get_news(company_name):
 
     try:
+
         articles = newsapi.get_everything(
-            q=symbol,
+            q=company_name,
             language="en",
             sort_by="publishedAt",
             page_size=5
@@ -117,6 +124,7 @@ def get_news(symbol):
         return [x["title"] for x in articles["articles"]]
 
     except:
+
         return []
 
 
@@ -126,7 +134,9 @@ def generate_analysis(symbol, tech, fundamentals, news):
     prompt = f"""
     You are a professional equity research analyst.
 
-    Analyze {symbol} using below data.
+    Analyze the stock below:
+
+    Stock: {symbol}
 
     Technical Data:
     {tech}
@@ -137,9 +147,9 @@ def generate_analysis(symbol, tech, fundamentals, news):
     News:
     {news}
 
-    Provide:
+    Give structured report:
     1. Technical Outlook
-    2. Fundamental Strengths/Weaknesses
+    2. Fundamental Strengths
     3. Risks
     4. Investment Recommendation
     """
@@ -156,9 +166,16 @@ def generate_analysis(symbol, tech, fundamentals, news):
 
 
 # ---------------- UI ----------------
-symbol = st.text_input("Enter Stock Symbol (e.g. RELIANCE.BSE)", "RELIANCE.BSE")
+symbol = st.text_input(
+    "Enter AlphaVantage Symbol (e.g. RELIANCE.BSE)",
+    "RELIANCE.BSE"
+)
 
-company_name = st.text_input("Enter Company Name for Fundamentals", "Reliance")
+company_code = st.text_input(
+    "Enter Screener Code (e.g. RELIANCE)",
+    "RELIANCE"
+)
+
 
 if st.button("Analyze Stock"):
 
@@ -170,16 +187,20 @@ if st.button("Analyze Stock"):
 
         st.write("Fetching Fundamental Data...")
 
-        fundamentals = get_screener_fundamentals(company_name)
+        fundamentals = get_screener_fundamentals(company_code)
 
         col1, col2 = st.columns(2)
 
         with col1:
+
             st.subheader("Technical Data")
+
             st.json(tech)
 
         with col2:
+
             st.subheader("Fundamental Data")
+
             st.json(fundamentals)
 
         # ---------------- CHART ----------------
@@ -198,18 +219,25 @@ if st.button("Analyze Stock"):
         # ---------------- NEWS ----------------
         st.write("Fetching News...")
 
-        news = get_news(company_name)
+        news = get_news(company_code)
 
         st.subheader("Latest News")
 
-        for n in news:
-            st.write("•", n)
+        if news:
 
-        # ---------------- AI ----------------
+            for n in news:
+
+                st.write("•", n)
+
+        else:
+
+            st.write("No news found.")
+
+        # ---------------- AI ANALYSIS ----------------
         st.write("Generating AI Analysis...")
 
         analysis = generate_analysis(
-            company_name,
+            company_code,
             tech,
             fundamentals,
             news
