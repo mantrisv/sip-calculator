@@ -5,58 +5,77 @@ import google.generativeai as genai
 import matplotlib.pyplot as plt
 from newsapi import NewsApiClient
 
+# ---------------- PAGE CONFIG ----------------
 st.set_page_config(page_title="AI Stock Analyzer", layout="wide")
 
 st.title("📊 AI Stock Analyzer")
 
-# ---------------- GEMINI CONFIG ----------------
+# ---------------- API CONFIG ----------------
 genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
 model = genai.GenerativeModel("gemini-2.5-flash")
 
-# ---------------- NEWS API ----------------
 newsapi = NewsApiClient(api_key=st.secrets["NEWS_API_KEY"])
 
-# ---------------- GET STOCK DATA ----------------
+
+# ---------------- STOCK DATA ----------------
 @st.cache_data(ttl=600)
-def get_stock_data(symbol):
+def get_stock_data(symbol, load_financials=False):
 
     ticker = yf.Ticker(symbol)
 
     hist = ticker.history(period="1y")
 
+    if hist.empty:
+        raise Exception("No stock data found.")
+
     hist["50DMA"] = hist["Close"].rolling(50).mean()
     hist["200DMA"] = hist["Close"].rolling(200).mean()
 
+    try:
+        info = ticker.fast_info
+    except:
+        info = {}
+
     tech = {
-        "Current Price": round(hist["Close"].iloc[-1],2),
-        "50DMA": round(hist["50DMA"].iloc[-1],2),
-        "200DMA": round(hist["200DMA"].iloc[-1],2),
-        "52W High": round(hist["High"].max(),2),
-        "52W Low": round(hist["Low"].min(),2),
+        "Current Price": round(hist["Close"].iloc[-1], 2),
+        "50DMA": round(hist["50DMA"].iloc[-1], 2),
+        "200DMA": round(hist["200DMA"].iloc[-1], 2),
+        "52W High": round(hist["High"].max(), 2),
+        "52W Low": round(hist["Low"].min(), 2),
         "Volume": int(hist["Volume"].iloc[-1])
     }
 
-    info = ticker.info
-
     fundamentals = {
-        "Market Cap": info.get("marketCap"),
-        "PE Ratio": info.get("trailingPE"),
-        "EPS": info.get("trailingEps"),
-        "Revenue": info.get("totalRevenue"),
-        "Profit Margin": info.get("profitMargins"),
-        "Dividend Yield": info.get("dividendYield"),
-        "Beta": info.get("beta")
+        "Market Cap": info.get("market_cap", "N/A"),
+        "PE Ratio": info.get("trailing_pe", "N/A"),
+        "EPS": info.get("eps", "N/A"),
+        "Dividend Yield": info.get("dividend_yield", "N/A"),
+        "Beta": info.get("beta", "N/A")
     }
 
-    statements = {
-        "Income Statement": ticker.financials,
-        "Balance Sheet": ticker.balance_sheet,
-        "Cashflow": ticker.cashflow
-    }
+    statements = {}
+
+    if load_financials:
+
+        try:
+            statements["Income Statement"] = ticker.financials
+        except:
+            statements["Income Statement"] = pd.DataFrame()
+
+        try:
+            statements["Balance Sheet"] = ticker.balance_sheet
+        except:
+            statements["Balance Sheet"] = pd.DataFrame()
+
+        try:
+            statements["Cashflow"] = ticker.cashflow
+        except:
+            statements["Cashflow"] = pd.DataFrame()
 
     return tech, fundamentals, statements, hist
 
-# ---------------- NEWS FETCH ----------------
+
+# ---------------- NEWS ----------------
 @st.cache_data(ttl=1800)
 def get_news(symbol):
 
@@ -68,64 +87,60 @@ def get_news(symbol):
             page_size=5
         )
 
-        news = []
-
-        for article in articles["articles"]:
-            news.append(article["title"])
-
-        return news
+        return [article["title"] for article in articles["articles"]]
 
     except:
         return []
 
+
 # ---------------- AI ANALYSIS ----------------
-def generate_analysis(symbol, tech, fundamentals, statements, news_text):
+def generate_analysis(symbol, tech, fundamentals, news_text):
 
     prompt = f"""
-    You are an equity research analyst.
+    You are a professional equity research analyst.
 
-    Generate a structured research report for {symbol}.
+    Analyze stock: {symbol}
 
-    Technical Data:
+    Technical Metrics:
     {tech}
 
-    Fundamental Data:
+    Fundamental Metrics:
     {fundamentals}
 
-    Financial Statements:
-    {statements}
-
-    News:
+    Recent News:
     {news_text}
 
-    Format:
+    Format Response As:
     1. Technical Outlook
-    2. Fundamental View
+    2. Fundamental Analysis
     3. News Sentiment
-    4. Key Risks
+    4. Risks
     5. Investment Recommendation
     """
 
     try:
-
         response = model.generate_content(prompt)
-
         return response.text
 
     except Exception as e:
-
         return f"AI generation failed: {e}"
+
 
 # ---------------- USER INPUT ----------------
 symbol = st.text_input("Enter Stock Symbol", "RELIANCE.NS")
 
-if st.button("Analyze Stock"):
+load_financials = st.checkbox("Load Detailed Financial Statements")
 
-    st.write("Fetching stock data...")
+if st.button("Analyze Stock"):
 
     try:
 
-        tech, fundamentals, statements, hist = get_stock_data(symbol)
+        st.write("Fetching stock data...")
+
+        tech, fundamentals, statements, hist = get_stock_data(
+            symbol,
+            load_financials
+        )
 
         col1, col2 = st.columns(2)
 
@@ -140,7 +155,7 @@ if st.button("Analyze Stock"):
         # ---------------- CHART ----------------
         st.subheader("Price Chart")
 
-        fig, ax = plt.subplots()
+        fig, ax = plt.subplots(figsize=(10, 5))
 
         ax.plot(hist.index, hist["Close"], label="Close")
         ax.plot(hist.index, hist["50DMA"], label="50DMA")
@@ -151,19 +166,19 @@ if st.button("Analyze Stock"):
         st.pyplot(fig)
 
         # ---------------- FINANCIALS ----------------
-        st.subheader("Financial Statements")
+        if load_financials:
 
-        for name, df in statements.items():
+            st.subheader("Financial Statements")
 
-            st.write(name)
+            for name, df in statements.items():
 
-            if df is not None and not df.empty:
+                st.write(f"### {name}")
 
-                st.dataframe(df)
+                if not df.empty:
+                    st.dataframe(df)
 
-            else:
-
-                st.write("No data available")
+                else:
+                    st.write("No data available")
 
         # ---------------- NEWS ----------------
         st.write("Fetching news...")
@@ -175,22 +190,25 @@ if st.button("Analyze Stock"):
         if news:
 
             for n in news:
-
                 st.write("•", n)
 
         else:
-
-            st.write("No recent news found")
+            st.write("No recent news found.")
 
         news_text = " ".join(news)
 
         # ---------------- AI ANALYSIS ----------------
-        st.write("Generating AI analysis...")
+        st.write("Generating AI Analysis...")
 
-        analysis = generate_analysis(symbol, tech, fundamentals, statements, news_text)
+        analysis = generate_analysis(
+            symbol,
+            tech,
+            fundamentals,
+            news_text
+        )
 
         st.markdown(analysis)
 
     except Exception as e:
 
-        st.error(f"Error fetching data: {e}")
+        st.error(f"Error: {e}")
