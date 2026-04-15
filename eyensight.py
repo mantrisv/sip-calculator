@@ -11,7 +11,7 @@ st.set_page_config(page_title="AI Stock Analyzer", layout="wide")
 st.title("📊 AI Stock Analyzer")
 
 ALPHA_KEY = st.secrets["ALPHA_VANTAGE_KEY"]
-APIFY_TOKEN = st.secrets["APIFY"]
+APIFY_TOKEN = st.secrets["APIFY_TOKEN"]
 
 genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
 model = genai.GenerativeModel("gemini-2.5-flash")
@@ -70,7 +70,7 @@ def get_screener_fundamentals(company_name):
     url = "https://api.apify.com/v2/acts/shashwattrivedi~screener-in/run-sync-get-dataset-items"
 
     params = {
-        "token": APIFY
+        "token": APIFY_TOKEN
     }
 
     payload = {
